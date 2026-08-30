@@ -14,6 +14,12 @@ function database() {
   databases.push(db);
   db.exec(`
     CREATE TABLE campaigns (id TEXT PRIMARY KEY, status TEXT NOT NULL);
+    CREATE TABLE campaign_members (
+      campaign_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      role TEXT NOT NULL,
+      PRIMARY KEY (campaign_id, user_id)
+    );
     CREATE TABLE batches (
       id TEXT PRIMARY KEY,
       campaign_id TEXT NOT NULL,
@@ -45,6 +51,8 @@ function claim(db: DatabaseSync, userId: string, ids = ['b1', 'b2', 'b3']) {
     '2026-08-30T00:00:00.000Z',
     'campaign',
     ...ids,
+    userId.startsWith('organizer') ? 'ORGANIZER' : 'VOLUNTEER',
+    userId,
     'campaign',
     ...ids,
     ids.length,
@@ -56,6 +64,7 @@ function claim(db: DatabaseSync, userId: string, ids = ['b1', 'b2', 'b3']) {
 describe('atomic batch claims', () => {
   it('lets only the first volunteer claim the complete selection', () => {
     const db = database();
+    db.exec("INSERT INTO campaign_members VALUES ('campaign', 'volunteer-a', 'VOLUNTEER'), ('campaign', 'volunteer-b', 'VOLUNTEER')");
     expect(claim(db, 'volunteer-a')).toHaveLength(3);
     expect(claim(db, 'volunteer-b')).toHaveLength(0);
     const owners = db.prepare('SELECT DISTINCT claimed_by_id AS owner FROM batches').all();
@@ -64,6 +73,7 @@ describe('atomic batch claims', () => {
 
   it('claims all requested rows or none when one row is no longer available', () => {
     const db = database();
+    db.exec("INSERT INTO campaign_members VALUES ('campaign', 'volunteer-a', 'VOLUNTEER')");
     db.prepare("UPDATE batches SET status = 'CLAIMED', claimed_by_id = 'someone' WHERE id = 'b2'").run();
     expect(claim(db, 'volunteer-a')).toHaveLength(0);
     const available = db.prepare("SELECT COUNT(*) AS count FROM batches WHERE status = 'AVAILABLE'").get() as { count: number };
@@ -72,7 +82,19 @@ describe('atomic batch claims', () => {
 
   it('enforces the three-active-batch cap inside the same statement', () => {
     const db = database();
+    db.exec("INSERT INTO campaign_members VALUES ('campaign', 'volunteer-a', 'VOLUNTEER')");
     db.exec("INSERT INTO batches VALUES ('existing', 'campaign', 4, 300, 0, 0, 'CLAIMED', 'volunteer-a', 'now', NULL, 'now', 'now')");
     expect(claim(db, 'volunteer-a')).toHaveLength(0);
+  });
+
+  it('rejects a volunteer who was not invited to the event', () => {
+    const db = database();
+    expect(claim(db, 'volunteer-without-membership')).toHaveLength(0);
+    expect(db.prepare("SELECT COUNT(*) AS count FROM batches WHERE status = 'AVAILABLE'").get()).toEqual({ count: 3 });
+  });
+
+  it('allows an organizer without a membership row', () => {
+    const db = database();
+    expect(claim(db, 'organizer-admin')).toHaveLength(3);
   });
 });

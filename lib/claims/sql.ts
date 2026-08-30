@@ -13,6 +13,14 @@ export function buildAtomicClaimSql(batchCount: number): string {
          WHERE campaigns.id = batches.campaign_id AND campaigns.status = 'ACTIVE'
        )
        AND (
+         ? = 'ORGANIZER'
+         OR EXISTS (
+           SELECT 1 FROM campaign_members
+           WHERE campaign_members.campaign_id = batches.campaign_id
+             AND campaign_members.user_id = ?
+         )
+       )
+       AND (
          SELECT COUNT(*) FROM batches AS selected
          WHERE selected.campaign_id = ?
            AND selected.id IN (${placeholders})

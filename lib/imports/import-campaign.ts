@@ -60,6 +60,14 @@ export async function importCampaign(input: CampaignImportInput, actor: User) {
       )
       .run();
 
+    await d1
+      .prepare(
+        `INSERT INTO campaign_members (id, campaign_id, user_id, role, joined_at)
+         VALUES (?, ?, ?, 'ORGANIZER', ?)`,
+      )
+      .bind(crypto.randomUUID(), campaignId, actor.id, now)
+      .run();
+
     const batchStatements = batchIds.map((batchId, index) => {
       const recipientCount = Math.min(input.batchSize, sendable.length - index * input.batchSize);
       return d1

@@ -4,9 +4,9 @@ import type { AppView, Overview } from './types';
 import Link from 'next/link';
 
 const navItems: Array<{ view: AppView; href: string; icon: string; label: string }> = [
-  { view: 'campaign', href: '/', icon: '✦', label: 'Campaigns' },
+  { view: 'campaign', href: '/', icon: '✦', label: 'Events' },
   { view: 'batches', href: '/my-batches', icon: '▦', label: 'My batches' },
-  { view: 'admin', href: '/admin', icon: '⌁', label: 'Organizer' },
+  { view: 'admin', href: '/admin', icon: '⌁', label: 'Admin portal' },
 ];
 
 export function RelayShell({
@@ -43,6 +43,7 @@ export function RelayShell({
           <div className="grid h-9 w-9 place-items-center rounded-full bg-[#e7e2d7] text-xs font-semibold text-[#5a4a35]" title={overview.user.email}>
             {initials || 'U'}
           </div>
+          <a href="/signout-with-chatgpt?return_to=%2F" className="text-[11px] font-medium text-[#686861] underline-offset-4 hover:underline sm:text-xs">Sign out</a>
         </div>
       </header>
 
@@ -78,6 +79,7 @@ export function RelayShell({
             <p className="mt-1.5 text-xs leading-5 text-[#77776f]">
               Every batch claim is atomic and every send is idempotent.
             </p>
+            <a href="/signout-with-chatgpt?return_to=%2F" className="mt-3 inline-flex text-xs font-medium text-[#686861] underline underline-offset-4">Sign out</a>
           </div>
         </aside>
 

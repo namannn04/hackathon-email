@@ -55,6 +55,8 @@ model User {
   gmailAccounts  GmailAccount[]
   claimedBatches Batch[]        @relation("BatchClaimer")
   auditEvents    AuditEvent[]
+  campaignMemberships CampaignMember[]
+  campaignInvites CampaignInvite[]
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 }
@@ -70,8 +72,37 @@ model Campaign {
   createdById String
   recipients  Recipient[]
   batches     Batch[]
+  members     CampaignMember[]
+  invites     CampaignInvite[]
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
+}
+
+model CampaignMember {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       UserRole @default(VOLUNTEER)
+  joinedAt   DateTime @default(now())
+
+  @@unique([campaignId, userId])
+  @@index([userId, campaignId])
+}
+
+model CampaignInvite {
+  id          String   @id @default(cuid())
+  campaignId  String
+  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  tokenHash   String   @unique
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([campaignId, revokedAt, expiresAt])
 }
 
 model Recipient {

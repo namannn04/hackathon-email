@@ -12,12 +12,20 @@ type CampaignSummary = {
   sentRecipients: number;
   availableBatches: number;
   totalBatches: number;
+  memberCount: number;
 };
 
 export async function getOverview(user: User, requestedCampaignId?: string | null) {
   const d1 = getD1();
-  const campaignRows = await d1
-    .prepare(
+  const accessClause =
+    user.role === 'ORGANIZER'
+      ? ''
+      : `AND EXISTS (
+           SELECT 1 FROM campaign_members
+           WHERE campaign_members.campaign_id = campaigns.id
+             AND campaign_members.user_id = ?
+         )`;
+  const campaignStatement = d1.prepare(
       `WITH recipient_stats AS (
          SELECT campaign_id,
                 SUM(CASE WHEN status != 'SUPPRESSED' THEN 1 ELSE 0 END) AS total_recipients,
@@ -29,20 +37,30 @@ export async function getOverview(user: User, requestedCampaignId?: string | nul
                 SUM(CASE WHEN status = 'AVAILABLE' THEN 1 ELSE 0 END) AS available_batches,
                 COUNT(*) AS total_batches
          FROM batches GROUP BY campaign_id
+       ),
+       membership_stats AS (
+         SELECT campaign_id, COUNT(*) AS member_count
+         FROM campaign_members GROUP BY campaign_id
        )
        SELECT campaigns.id, campaigns.name, campaigns.subject, campaigns.status,
               campaigns.batch_size AS batchSize,
               COALESCE(recipient_stats.total_recipients, 0) AS totalRecipients,
               COALESCE(recipient_stats.sent_recipients, 0) AS sentRecipients,
               COALESCE(batch_stats.available_batches, 0) AS availableBatches,
-              COALESCE(batch_stats.total_batches, 0) AS totalBatches
+              COALESCE(batch_stats.total_batches, 0) AS totalBatches,
+              COALESCE(membership_stats.member_count, 0) AS memberCount
        FROM campaigns
        LEFT JOIN recipient_stats ON recipient_stats.campaign_id = campaigns.id
        LEFT JOIN batch_stats ON batch_stats.campaign_id = campaigns.id
+       LEFT JOIN membership_stats ON membership_stats.campaign_id = campaigns.id
        WHERE campaigns.status IN ('ACTIVE', 'PAUSED', 'COMPLETED')
+       ${accessClause}
        ORDER BY campaigns.created_at DESC`,
-    )
-    .all<CampaignSummary>();
+    );
+  const campaignRows =
+    user.role === 'ORGANIZER'
+      ? await campaignStatement.all<CampaignSummary>()
+      : await campaignStatement.bind(user.id).all<CampaignSummary>();
   const campaigns = campaignRows.results;
   const campaign =
     campaigns.find((item) => item.id === requestedCampaignId) ??
@@ -141,6 +159,29 @@ export async function getOverview(user: User, requestedCampaignId?: string | nul
           .all<{ id: string; email: string; reason: string; createdAt: string }>()
       : { results: [] };
 
+  const inviteRows =
+    user.role === 'ORGANIZER'
+      ? await d1
+          .prepare(
+            `SELECT campaign_invites.id, campaign_invites.campaign_id AS campaignId,
+                    campaigns.name AS campaignName, campaign_invites.expires_at AS expiresAt,
+                    campaign_invites.created_at AS createdAt
+             FROM campaign_invites
+             JOIN campaigns ON campaigns.id = campaign_invites.campaign_id
+             WHERE campaign_invites.revoked_at IS NULL AND campaign_invites.expires_at > ?
+             ORDER BY campaign_invites.created_at DESC
+             LIMIT 100`,
+          )
+          .bind(new Date().toISOString())
+          .all<{
+            id: string;
+            campaignId: string;
+            campaignName: string;
+            expiresAt: string;
+            createdAt: string;
+          }>()
+      : { results: [] };
+
   return {
     user: { id: user.id, email: user.email, name: user.name, role: user.role },
     campaigns,
@@ -150,6 +191,7 @@ export async function getOverview(user: User, requestedCampaignId?: string | nul
     gmailAccounts: gmailAccounts.results,
     audits: audits.results,
     suppressions: suppressionRows.results,
+    invites: inviteRows.results,
     gmailConfigured: Boolean(
       process.env.GOOGLE_CLIENT_ID &&
         process.env.GOOGLE_CLIENT_SECRET &&

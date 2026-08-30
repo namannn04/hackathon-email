@@ -54,6 +54,52 @@ export const campaigns = sqliteTable(
   ],
 );
 
+export const campaignMembers = sqliteTable(
+  'campaign_members',
+  {
+    id: text('id').primaryKey(),
+    campaignId: text('campaign_id')
+      .notNull()
+      .references(() => campaigns.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: text('role', { enum: ['ORGANIZER', 'VOLUNTEER'] })
+      .notNull()
+      .default('VOLUNTEER'),
+    joinedAt: text('joined_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('uq_campaign_members_campaign_user').on(table.campaignId, table.userId),
+    index('idx_campaign_members_user_campaign').on(table.userId, table.campaignId),
+  ],
+);
+
+export const campaignInvites = sqliteTable(
+  'campaign_invites',
+  {
+    id: text('id').primaryKey(),
+    campaignId: text('campaign_id')
+      .notNull()
+      .references(() => campaigns.id, { onDelete: 'cascade' }),
+    tokenHash: text('token_hash').notNull(),
+    createdById: text('created_by_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    expiresAt: text('expires_at').notNull(),
+    revokedAt: text('revoked_at'),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('uq_campaign_invites_token_hash').on(table.tokenHash),
+    index('idx_campaign_invites_campaign_active').on(
+      table.campaignId,
+      table.revokedAt,
+      table.expiresAt,
+    ),
+  ],
+);
+
 export const gmailAccounts = sqliteTable(
   'gmail_accounts',
   {

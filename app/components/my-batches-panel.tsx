@@ -122,7 +122,7 @@ export function MyBatchesPanel({
 
       {completedBatches.length ? (
         <section className="mt-8">
-          <h2 className="mb-3 text-sm font-semibold text-[#55554f]">Completed this campaign</h2>
+          <h2 className="mb-3 text-sm font-semibold text-[#55554f]">Completed batches</h2>
           <div className="space-y-2">
             {completedBatches.slice(0, 8).map((batch) => (
               <div key={batch.id} className="flex items-center justify-between rounded-xl border border-[#deded8] bg-white px-4 py-3 text-sm">

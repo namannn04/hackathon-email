@@ -8,6 +8,7 @@ export type CampaignSummary = {
   sentRecipients: number;
   availableBatches: number;
   totalBatches: number;
+  memberCount: number;
 };
 
 export type AvailableBatch = {
@@ -54,6 +55,13 @@ export type Overview = {
     id: string;
     email: string;
     reason: string;
+    createdAt: string;
+  }>;
+  invites: Array<{
+    id: string;
+    campaignId: string;
+    campaignName: string;
+    expiresAt: string;
     createdAt: string;
   }>;
   gmailConfigured: boolean;

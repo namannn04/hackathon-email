@@ -60,13 +60,13 @@ export function BatchPicker({
       <div className="mb-8 flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
         <div>
           <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-[#77776f]">
-            <span>Campaigns</span><span>/</span>
+            <span>Events</span><span>/</span>
             {overview.campaigns.length > 1 ? (
               <select
                 value={campaign.id}
                 onChange={(event) => { router.push(`/?campaignId=${encodeURIComponent(event.target.value)}`); }}
                 className="rounded-lg border border-[#deded8] bg-white px-2 py-1 text-[#34342f] outline-none"
-                aria-label="Choose campaign"
+                aria-label="Choose event"
               >
                 {overview.campaigns.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
               </select>
@@ -83,10 +83,10 @@ export function BatchPicker({
         </div>
       </div>
 
-      <section aria-label="Campaign status" className="mb-8 grid gap-3 sm:grid-cols-3">
+      <section aria-label="Event status" className="mb-8 grid gap-3 sm:grid-cols-3">
         <Metric label="Available" value={`${campaign.availableBatches} batches`} note={`${formatNumber(campaign.totalRecipients - campaign.sentRecipients)} recipients left`} tone="green" />
         <Metric label="Your workload" value={`${overview.myBatches.filter((batch) => batch.status !== 'SENT').length} claimed`} note="Up to 3 active at a time" />
-        <Metric label="Campaign sent" value={`${progress}%`} note={`${formatNumber(campaign.sentRecipients)} of ${formatNumber(campaign.totalRecipients)}`} progress={progress} />
+        <Metric label="Event sent" value={`${progress}%`} note={`${formatNumber(campaign.sentRecipients)} of ${formatNumber(campaign.totalRecipients)}`} progress={progress} />
       </section>
 
       <section className="overflow-hidden rounded-[20px] border border-[#dcdcd5] bg-white">
@@ -175,11 +175,11 @@ function EmptyCampaign({ isOrganizer }: { isOrganizer: boolean }) {
   return (
     <div className="mx-auto mt-16 max-w-xl rounded-[24px] border border-[#deded8] bg-white p-8 text-center sm:p-12">
       <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-[#e5ebe7] text-xl text-[#263d32]">✦</span>
-      <h1 className="mt-5 text-2xl font-semibold tracking-[-0.03em]">No active campaign yet</h1>
+      <h1 className="mt-5 text-2xl font-semibold tracking-[-0.03em]">No event access yet</h1>
       <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#6e6e67]">
-        {isOrganizer ? 'Create the first campaign and import its recipient list to generate claimable batches.' : 'An organizer has not opened a campaign for volunteers yet.'}
+        {isOrganizer ? 'Create the first event and import its recipient list to generate claimable batches.' : 'Open the event link your organizer shared with you. It grants access to that event only.'}
       </p>
-      {isOrganizer ? <Link href="/admin" className="mt-6 inline-flex h-11 items-center rounded-xl bg-[#263d32] px-5 text-sm font-semibold text-white">Create campaign</Link> : null}
+      {isOrganizer ? <Link href="/admin" className="mt-6 inline-flex h-11 items-center rounded-xl bg-[#263d32] px-5 text-sm font-semibold text-white">Create event</Link> : null}
     </div>
   );
 }

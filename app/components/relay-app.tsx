@@ -122,11 +122,11 @@ export function RelayApp({ view, campaignId }: { view: AppView; campaignId?: str
       error?: { message?: string };
     };
     if (!response.ok) {
-      const message = data.error?.message ?? 'Campaign import failed.';
+      const message = data.error?.message ?? 'Event import failed.';
       setError(message);
       throw new Error(message);
     }
-    setNotice('Campaign imported and opened to volunteers.');
+    setNotice('Event created. Share its event-only link when you are ready.');
     await load();
     return data;
   }
@@ -153,6 +153,42 @@ export function RelayApp({ view, campaignId }: { view: AppView; campaignId?: str
     }
   }
 
+  async function createEventInvite(campaignId: string) {
+    setError(null);
+    try {
+      const invite = await api<{
+        id: string;
+        campaignId: string;
+        campaignName: string;
+        url: string;
+        expiresAt: string;
+      }>('/api/campaigns/invite', {
+        method: 'POST',
+        body: JSON.stringify({ campaignId }),
+      });
+      setNotice('Event-only invitation link created.');
+      await load();
+      return invite;
+    } catch (inviteError) {
+      setError(inviteError instanceof Error ? inviteError.message : 'Could not create the invitation.');
+      throw inviteError;
+    }
+  }
+
+  async function revokeEventInvite(inviteId: string) {
+    setError(null);
+    try {
+      await api('/api/campaigns/invite', {
+        method: 'DELETE',
+        body: JSON.stringify({ inviteId }),
+      });
+      setNotice('Event invitation revoked.');
+      await load();
+    } catch (inviteError) {
+      setError(inviteError instanceof Error ? inviteError.message : 'Could not revoke the invitation.');
+    }
+  }
+
   if (!overview && !error) return <RelayLoading />;
   if (!overview) return <RelayFailure message={error ?? 'Could not load Relay.'} onRetry={load} />;
 
@@ -162,7 +198,7 @@ export function RelayApp({ view, campaignId }: { view: AppView; campaignId?: str
       {error ? <Toast tone="error" message={error} onClose={() => setError(null)} /> : null}
       {view === 'campaign' ? <BatchPicker overview={overview} onClaim={claim} /> : null}
       {view === 'batches' ? <MyBatchesPanel overview={overview} onAssign={assign} onAddMockAccount={addMockAccount} onSend={send} /> : null}
-      {view === 'admin' ? <AdminPanel overview={overview} onCreateCampaign={createCampaign} onAddSuppression={addSuppression} onRemoveSuppression={removeSuppression} /> : null}
+      {view === 'admin' ? <AdminPanel overview={overview} onCreateCampaign={createCampaign} onAddSuppression={addSuppression} onRemoveSuppression={removeSuppression} onCreateInvite={createEventInvite} onRevokeInvite={revokeEventInvite} /> : null}
     </RelayShell>
   );
 }

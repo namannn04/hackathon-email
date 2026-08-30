@@ -1,13 +1,15 @@
 # Relay
 
-Relay is a focused internal tool for coordinating hackathon promotional email batches. Organizers import a CSV/XLSX once; volunteers claim up to three batches, attach one Gmail account to each, and send without copying addresses or touching BCC fields.
+Relay is a focused internal tool for coordinating event outreach. Organizers create an event, set its exact mail content, import a CSV/XLSX once, and share an event-only invitation. Volunteers see only joined events, claim up to three batches, attach one Gmail account to each, and send without copying addresses or touching BCC fields.
 
 ## What is implemented
 
-- Campaign creation with subject, plain-text content, batch size, and CSV/XLSX import.
+- Admin portal with event creation, subject and mail content, batch size, and CSV/XLSX import.
+- Revocable, expiring event links backed by hashed invite tokens and event-scoped memberships.
 - Email validation, case-insensitive deduplication, global suppression checks, recipient records, and automatic batch generation.
 - Database-atomic all-or-none claims with a three-active-batch cap.
-- ChatGPT/Sites authentication with server-side organizer and ownership authorization.
+- Passwordless ChatGPT/Sites sign-in with automatic Relay profile creation; no separate signup form.
+- Server-side organizer, event-membership, and resource-ownership authorization.
 - Multiple user-owned Google OAuth connections with PKCE, one-time state, verified Google identity tokens, and AES-GCM token encryption.
 - One Gmail account per active batch, enforced by a partial unique database index.
 - Idempotent BCC batch sends with a unique send record, conditional lease, deterministic RFC 822 Message-ID, ambiguous-response reconciliation, bounded retries, and provider error classification.
@@ -31,9 +33,11 @@ Requirements: Node.js 22.13 or newer and npm.
 3. Install dependencies with `npm install`.
 4. Apply the local D1 migration with `npm run db:migrate:local`.
 5. Start Relay with `npm run dev` and open the printed local URL.
-6. Use the local Sites sign-in. The first user created in a new database becomes the organizer; later users are volunteers.
+6. Use the local Sites sign-in. In development only, the first user becomes the organizer when no organizer allowlist is configured.
 
-The organizer page can import `tests/fixtures/sample-recipients.csv` for a safe end-to-end test. In local mock mode, volunteers can add test Gmail accounts from the My batches screen.
+Set `RELAY_ORGANIZER_EMAILS` to the comma-separated email addresses that may open the admin portal. This is required for a safe production setup. Everyone else gets a volunteer profile automatically and sees no events until accepting an organizer's event link.
+
+The admin portal can import `tests/fixtures/sample-recipients.csv` for a safe end-to-end test. Create an event link from its access card and share only that URL. Links expire after 14 days and can be revoked. In local mock mode, volunteers can add test Gmail accounts from the My batches screen.
 
 ## Google OAuth and Gmail setup
 
@@ -68,6 +72,8 @@ The tests cover CSV validation/deduplication, all-or-none atomic claim SQL, the 
 ## Security notes
 
 - All mutations require a signed-in platform identity and server-side ownership/role checks.
+- Production organizer access comes from `RELAY_ORGANIZER_EMAILS`; it is never granted to an arbitrary first visitor.
+- Event invite secrets are hashed at rest. Accepting one creates membership in only that event; event listings and atomic claims enforce that membership in SQL.
 - Same-origin and Fetch Metadata checks reject cross-site mutations.
 - Gmail OAuth uses PKCE, expiring single-use state, an exact configured redirect URI, and verified Google identity claims.
 - Gmail account queries are always scoped to the owning Relay user.
@@ -75,4 +81,4 @@ The tests cover CSV validation/deduplication, all-or-none atomic claim SQL, the 
 - Suppressions are rechecked immediately before a provider call, not only during import.
 - No API returns Gmail token ciphertext, recipient lists, or BCC contents to the volunteer browser.
 
-Production access should remain private to the outreach team. Rotate `TOKEN_ENCRYPTION_KEY` only with a planned token re-encryption or forced Gmail reconnection procedure.
+The sign-in page can be reachable to invited people, while all event data remains gated by server-side membership. Rotate `TOKEN_ENCRYPTION_KEY` only with a planned token re-encryption or forced Gmail reconnection procedure.

@@ -21,6 +21,8 @@ export async function claimBatches(campaignId: string, requestedIds: string[], u
       now,
       campaignId,
       ...batchIds,
+      user.role,
+      user.id,
       campaignId,
       ...batchIds,
       batchIds.length,

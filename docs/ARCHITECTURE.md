@@ -1,6 +1,6 @@
 # Relay architecture proposal
 
-Relay is an internal coordination tool, not an email-marketing suite. The design keeps the volunteer path short while making claims and sends safe at the database boundary.
+Relay is an internal coordination tool, not an email-marketing suite. The design keeps the volunteer path short while making event access, claims, and sends safe at the database boundary.
 
 ## Final folder structure
 
@@ -10,11 +10,13 @@ hackathon-mailer/
 │   ├── api/
 │   │   ├── batches/claim/route.ts
 │   │   ├── campaigns/route.ts
+│   │   ├── campaigns/invite/route.ts
 │   │   ├── gmail/callback/route.ts
 │   │   ├── gmail/connect/route.ts
 │   │   ├── imports/route.ts
 │   │   └── sends/route.ts
 │   ├── campaigns/[campaignId]/page.tsx
+│   ├── join/[token]/page.tsx
 │   ├── my-batches/page.tsx
 │   ├── admin/page.tsx
 │   ├── components/
@@ -34,6 +36,7 @@ hackathon-mailer/
 │   ├── crypto/
 │   ├── gmail/
 │   ├── imports/
+│   ├── invites/
 │   └── sending/
 ├── prisma/schema.prisma     # requested relational design reference
 ├── tests/
@@ -76,8 +79,30 @@ model Campaign {
   createdById String
   recipients Recipient[]
   batches Batch[]
+  members CampaignMember[]
+  invites CampaignInvite[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model CampaignMember {
+  id String @id @default(cuid())
+  campaignId String
+  userId String
+  role UserRole @default(VOLUNTEER)
+  joinedAt DateTime @default(now())
+  @@unique([campaignId, userId])
+  @@index([userId, campaignId])
+}
+
+model CampaignInvite {
+  id String @id @default(cuid())
+  campaignId String
+  tokenHash String @unique
+  createdById String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
 }
 
 model Recipient {
@@ -169,7 +194,11 @@ model AuditEvent {
 
 ## Atomic batch-claim strategy
 
-Claims use one parameterized SQL statement, not a read-then-write sequence. The statement updates only rows that are still `AVAILABLE`, belong to the requested campaign, and are in the requested ID set. A count guard inside the same statement requires every selected row to still be available; otherwise zero rows are changed. `RETURNING` provides the claimed records. The service rejects requests larger than three and checks the volunteer's active-claim cap inside that statement. Because the availability check and update occur in one SQLite write transaction, concurrent volunteers cannot both acquire the same batch.
+Claims use one parameterized SQL statement, not a read-then-write sequence. The statement updates only rows that are still `AVAILABLE`, belong to the requested event, are in the requested ID set, and are accessible through an event membership (organizers have an explicit bypass). A count guard inside the same statement requires every selected row to still be available; otherwise zero rows are changed. `RETURNING` provides the claimed records. The service rejects requests larger than three and checks the volunteer's active-claim cap inside that statement. Because the access, availability, and update checks occur in one SQLite write transaction, concurrent volunteers cannot both acquire the same batch or claim from an unshared event.
+
+## Event access strategy
+
+The platform sign-in establishes a stable Relay identity and creates the local profile just in time; it is not the Gmail sending authorization. Production organizers are allowlisted by email. A shared event URL contains a high-entropy token, while D1 stores only its SHA-256 hash. A valid, unexpired, unrevoked token inserts one `(event, user)` membership. Volunteer event queries and claims require that membership, and recipient addresses never enter volunteer API responses.
 
 ## Idempotent sending strategy
 
