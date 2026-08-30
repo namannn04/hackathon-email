@@ -11,6 +11,7 @@ export async function createMailTask(input: {
   subject: string;
   bodyText: string;
   bodyHtml?: string;
+  images?: Array<{ filename: string; mimeType: string; dataBase64: string; byteSize: number }>;
   batchSize: number;
 }, actor: User) {
   const prisma = getPrisma();
@@ -34,6 +35,7 @@ export async function createMailTask(input: {
   }
 
   const sizes = planBatchSizes(recipients.length, input.batchSize);
+  const images = (input.images ?? []).map((image, index) => ({ ...image, contentId: `image${index + 1}`, position: index }));
   const task = await prisma.mailTask.create({
     data: {
       eventId: event.id,
@@ -41,8 +43,11 @@ export async function createMailTask(input: {
       toEmail: input.toEmail.toLowerCase(),
       subject: input.subject,
       bodyText: input.bodyText,
-      bodyHtml: input.bodyHtml?.trim() || plainTextToHtml(input.bodyText),
+      bodyHtml: buildBodyHtml(input.bodyHtml, input.bodyText, images.map((image) => image.contentId)),
       batchSize: input.batchSize,
+      images: images.length
+        ? { createMany: { data: images.map(({ contentId, filename, mimeType, dataBase64, byteSize, position }) => ({ contentId, filename, mimeType, dataBase64, byteSize, position })) } }
+        : undefined,
     },
   });
   try {
@@ -87,6 +92,21 @@ export async function createMailTask(input: {
   }
 
   return { mailTaskId: task.id, eventId: event.id, batches: sizes.length, batchSizes: sizes };
+}
+
+/**
+ * The organizer's own HTML wins. Otherwise the plain body is escaped into a
+ * simple document, with any uploaded images stacked above it so that an
+ * organizer who only attaches a poster still gets a sensible message.
+ */
+function buildBodyHtml(bodyHtml: string | undefined, bodyText: string, contentIds: string[]): string {
+  const authored = bodyHtml?.trim();
+  if (authored) return authored;
+  if (!contentIds.length) return plainTextToHtml(bodyText);
+  const pictures = contentIds
+    .map((contentId) => `<img src="cid:${contentId}" alt="" style="display:block;max-width:100%;height:auto;margin:0 0 16px" />`)
+    .join('');
+  return `<div style="font-family:Arial,sans-serif;line-height:1.6">${pictures}${plainTextToHtml(bodyText)}</div>`;
 }
 
 function plainTextToHtml(value: string) {

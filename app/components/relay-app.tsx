@@ -104,11 +104,18 @@ export function RelayApp({ view, eventId, mailTaskId }: { view: AppView; eventId
     return data;
   }
 
-  async function createMailTask(input: { eventId: string; name: string; toEmail: string; subject: string; bodyText: string; bodyHtml?: string; batchSize: number }) {
-    const result = await api<{ mailTaskId: string; batches: number; batchSizes: number[] }>('/api/mail-tasks', { method: 'POST', body: JSON.stringify(input) });
-    setNotice(`Mail task created with ${result.batches} sets (${result.batchSizes.join(', ')}).`);
+  async function createMailTask(form: FormData) {
+    // Sent as multipart so the optional inline images ride along with the fields.
+    const response = await fetch('/api/mail-tasks', { method: 'POST', body: form });
+    const data = await response.json() as { mailTaskId: string; batches: number; batchSizes: number[]; error?: { message?: string } };
+    if (!response.ok) {
+      const message = data.error?.message ?? 'The mail task could not be created.';
+      setError(message);
+      throw new Error(message);
+    }
+    setNotice(`Mail task created with ${data.batches} sets (${data.batchSizes.join(', ')}).`);
     await load();
-    return result;
+    return data;
   }
 
   async function addSuppression(email: string, reason: string) {

@@ -75,6 +75,12 @@ export async function sendBatch(batchId: string, gmailAccountId: string, user: U
     let providerMessageId: string;
     if (usesMockTransport()) providerMessageId = `mock-${send.id}`;
     else {
+      // Loaded only on the real send path; the preview never needs the bytes.
+      const images = await prisma.mailTaskImage.findMany({
+        where: { mailTaskId: batch.mailTask.id },
+        orderBy: { position: 'asc' },
+        select: { contentId: true, filename: true, mimeType: true, dataBase64: true },
+      });
       const raw = buildGmailMime({
         sender: gmail.email,
         to: batch.mailTask.toEmail,
@@ -84,6 +90,7 @@ export async function sendBatch(batchId: string, gmailAccountId: string, user: U
         bodyHtml: batch.mailTask.bodyHtml,
         messageId: deterministicMessageId,
         batchId,
+        images,
       });
       providerMessageId = (await sendRawGmailMessage({ accountId: gmail.id, userId: user.id, raw })).id;
     }

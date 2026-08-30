@@ -30,6 +30,66 @@ describe('Gmail MIME construction', () => {
     expect(mime).not.toContain('\nSubject: injected');
   });
 
+  it('nests the alternative inside multipart/related and addresses images by cid', () => {
+    const mime = decodeRaw(buildGmailMime({
+      sender: 'sender@example.com',
+      to: 'organizer@example.com',
+      recipients: ['one@example.com'],
+      subject: 'Poster',
+      bodyText: 'Hello',
+      bodyHtml: '<p><img src="cid:image1"></p>',
+      messageId: '<relay.pic@relay.internal>',
+      batchId: 'pic-1',
+      images: [{ contentId: 'image1', filename: 'poster.png', mimeType: 'image/png', dataBase64: 'aGVsbG8=' }],
+    }));
+    expect(mime).toContain('Content-Type: multipart/related; boundary="relay_rel_pic1"; type="multipart/alternative"');
+    expect(mime).toContain('Content-Type: multipart/alternative; boundary="relay_alt_pic1"');
+    expect(mime).toContain('Content-ID: <image1>');
+    expect(mime).toContain('Content-Disposition: inline; filename="poster.png"');
+    expect(mime).toContain('aGVsbG8=');
+    // The alternative must close before the image part begins.
+    expect(mime.indexOf('--relay_alt_pic1--')).toBeLessThan(mime.indexOf('Content-ID: <image1>'));
+    expect(mime.trimEnd().endsWith('--relay_rel_pic1--')).toBe(true);
+  });
+
+  it('keeps a plain alternative when there are no images', () => {
+    const mime = decodeRaw(buildGmailMime({
+      sender: 'sender@example.com',
+      to: 'organizer@example.com',
+      recipients: ['one@example.com'],
+      subject: 'No poster',
+      bodyText: 'Hello',
+      bodyHtml: '<p>Hello</p>',
+      messageId: '<relay.plain@relay.internal>',
+      batchId: 'plain-1',
+    }));
+    expect(mime).toContain('Content-Type: multipart/alternative; boundary="relay_alt_plain1"');
+    expect(mime).not.toContain('multipart/related');
+  });
+
+  it('strips header injection from filenames and content ids', () => {
+    const mime = decodeRaw(buildGmailMime({
+      sender: 'sender@example.com',
+      to: 'organizer@example.com',
+      recipients: ['one@example.com'],
+      subject: 'Poster',
+      bodyText: 'Hello',
+      bodyHtml: '<p>Hello</p>',
+      messageId: '<relay.evil@relay.internal>',
+      batchId: 'evil-1',
+      images: [{
+        contentId: 'img\r\nCc: attacker@example.com',
+        filename: 'a"\r\nCc: attacker@example.com.png',
+        mimeType: 'image/png',
+        dataBase64: 'aGVsbG8=',
+      }],
+    }));
+    // The value stays inside a quoted header parameter; what must never happen
+    // is a new header line, which only CR/LF could start.
+    expect(mime).not.toMatch(/\r\nCc:/);
+    expect(mime).toContain('Content-ID: <imgCcattackerexample.com>');
+  });
+
   it('strips header injection from subject values', () => {
     const mime = decodeRaw(buildGmailMime({
       sender: 'sender@example.com',

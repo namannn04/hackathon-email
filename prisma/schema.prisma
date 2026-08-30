@@ -147,10 +147,27 @@ model MailTask {
   batches    Batch[]
   deliveries MailTaskRecipient[]
   activities ActivityEvent[]
+  images     MailTaskImage[]
   createdAt  DateTime            @default(now())
   updatedAt  DateTime            @updatedAt
 
   @@index([eventId, status, createdAt])
+}
+
+model MailTaskImage {
+  id         String   @id @default(cuid())
+  mailTaskId String
+  mailTask   MailTask @relation(fields: [mailTaskId], references: [id], onDelete: Cascade)
+  contentId  String
+  filename   String
+  mimeType   String
+  dataBase64 String
+  byteSize   Int
+  position   Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  @@unique([mailTaskId, contentId])
+  @@index([mailTaskId, position])
 }
 
 model Batch {
