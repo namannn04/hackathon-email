@@ -6,7 +6,7 @@
 export const legal = {
   serviceName: 'Relay',
   lastUpdated: '30 August 2026',
-  contactEmail: process.env.RELAY_CONTACT_EMAIL ?? 'support@example.com',
+  contactEmail: process.env.RELAY_CONTACT_EMAIL ?? 'namangeekroom@gmail.com',
   entityName: process.env.RELAY_LEGAL_ENTITY ?? 'the Relay team',
   governingLaw: process.env.RELAY_GOVERNING_LAW ?? 'India',
   siteOrigin: process.env.SITE_ORIGIN ?? 'http://localhost:3000',
