@@ -104,7 +104,7 @@ export function RelayApp({ view, eventId, mailTaskId }: { view: AppView; eventId
     return data;
   }
 
-  async function createMailTask(input: { eventId: string; name: string; toEmail: string; subject: string; bodyText: string; batchSize: number }) {
+  async function createMailTask(input: { eventId: string; name: string; toEmail: string; subject: string; bodyText: string; bodyHtml?: string; batchSize: number }) {
     const result = await api<{ mailTaskId: string; batches: number; batchSizes: number[] }>('/api/mail-tasks', { method: 'POST', body: JSON.stringify(input) });
     setNotice(`Mail task created with ${result.batches} sets (${result.batchSizes.join(', ')}).`);
     await load();

@@ -3,6 +3,18 @@ import { assertTrustedMutation, HttpError, jsonError, readString } from '@/lib/h
 import { createMailTask } from '@/lib/mail-tasks/manage';
 import { NextRequest, NextResponse } from 'next/server';
 
+// The organizer writes this HTML and only allowlisted organizers reach here.
+// It is never rendered in the app, only placed in the outgoing message.
+function readOptionalHtml(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.length > 200_000) {
+    throw new HttpError(400, 'HTML body is too long.', 'VALIDATION_ERROR');
+  }
+  return trimmed;
+}
+
 export async function POST(request: NextRequest) {
   try {
     assertTrustedMutation(request);
@@ -22,6 +34,7 @@ export async function POST(request: NextRequest) {
       toEmail,
       subject: readString(body.subject, 'Subject', 180),
       bodyText: readString(body.bodyText, 'Email content', 50_000),
+      bodyHtml: readOptionalHtml(body.bodyHtml),
       batchSize,
     }, actor);
     return NextResponse.json(result, { status: 201 });

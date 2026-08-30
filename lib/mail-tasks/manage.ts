@@ -10,6 +10,7 @@ export async function createMailTask(input: {
   toEmail: string;
   subject: string;
   bodyText: string;
+  bodyHtml?: string;
   batchSize: number;
 }, actor: User) {
   const prisma = getPrisma();
@@ -40,7 +41,7 @@ export async function createMailTask(input: {
       toEmail: input.toEmail.toLowerCase(),
       subject: input.subject,
       bodyText: input.bodyText,
-      bodyHtml: plainTextToHtml(input.bodyText),
+      bodyHtml: input.bodyHtml?.trim() || plainTextToHtml(input.bodyText),
       batchSize: input.batchSize,
     },
   });
