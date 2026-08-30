@@ -1,0 +1,15 @@
+import { requireAppUser } from '@/lib/auth/current-user';
+import { assertTrustedMutation, jsonError, readString } from '@/lib/http';
+import { sendBatch } from '@/lib/sending/send-batch';
+import { NextRequest, NextResponse } from 'next/server';
+
+export async function POST(request: NextRequest) {
+  try {
+    assertTrustedMutation(request);
+    const user = await requireAppUser();
+    const body = (await request.json()) as { batchId?: unknown };
+    return NextResponse.json(await sendBatch(readString(body.batchId, 'Batch', 80), user));
+  } catch (error) {
+    return jsonError(error);
+  }
+}

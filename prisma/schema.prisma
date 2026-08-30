@@ -1,0 +1,165 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ORGANIZER
+  VOLUNTEER
+}
+
+enum CampaignStatus {
+  DRAFT
+  READY
+  ACTIVE
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+
+enum BatchStatus {
+  AVAILABLE
+  CLAIMED
+  SENDING
+  SENT
+  FAILED
+}
+
+enum RecipientStatus {
+  PENDING
+  RESERVED
+  SENT
+  FAILED
+  SUPPRESSED
+}
+
+enum SendStatus {
+  QUEUED
+  DISPATCHING
+  SENT
+  RETRYABLE_FAILED
+  PERMANENT_FAILED
+  CANCELLED
+}
+
+model User {
+  id             String         @id @default(cuid())
+  externalId     String         @unique
+  email          String         @unique
+  name           String?
+  role           UserRole       @default(VOLUNTEER)
+  gmailAccounts  GmailAccount[]
+  claimedBatches Batch[]        @relation("BatchClaimer")
+  auditEvents    AuditEvent[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model Campaign {
+  id          String         @id @default(cuid())
+  name        String
+  subject     String
+  bodyHtml    String
+  bodyText    String
+  batchSize   Int            @default(300)
+  status      CampaignStatus @default(DRAFT)
+  createdById String
+  recipients  Recipient[]
+  batches     Batch[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+model Recipient {
+  id              String          @id @default(cuid())
+  campaignId      String
+  campaign        Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  batchId         String?
+  batch           Batch?          @relation(fields: [batchId], references: [id])
+  email           String
+  normalizedEmail String
+  status          RecipientStatus @default(PENDING)
+  sentAt          DateTime?
+
+  @@unique([campaignId, normalizedEmail])
+  @@index([campaignId, status])
+  @@index([batchId, status])
+}
+
+model Batch {
+  id             String        @id @default(cuid())
+  campaignId     String
+  campaign       Campaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  number         Int
+  status         BatchStatus   @default(AVAILABLE)
+  claimedById    String?
+  claimedBy      User?         @relation("BatchClaimer", fields: [claimedById], references: [id])
+  claimedAt      DateTime?
+  gmailAccountId String?
+  gmailAccount   GmailAccount? @relation(fields: [gmailAccountId], references: [id])
+  recipients     Recipient[]
+  send           Send?
+
+  @@unique([campaignId, number])
+  @@index([campaignId, status])
+  @@index([claimedById, status])
+}
+
+model GmailAccount {
+  id                     String   @id @default(cuid())
+  userId                 String
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  googleSubject          String
+  email                  String
+  accessTokenCiphertext  String
+  refreshTokenCiphertext String?
+  tokenExpiresAt         DateTime
+  scopes                 String
+  revokedAt              DateTime?
+  batches                Batch[]
+
+  @@unique([userId, googleSubject])
+}
+
+model Send {
+  id                     String     @id @default(cuid())
+  batchId                String     @unique
+  batch                  Batch      @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  idempotencyKey         String     @unique
+  deterministicMessageId String     @unique
+  status                 SendStatus @default(QUEUED)
+  attemptCount           Int        @default(0)
+  leaseOwner             String?
+  leaseExpiresAt         DateTime?
+  providerMessageId      String?
+  lastErrorCode          String?
+  lastErrorMessage       String?
+  nextAttemptAt          DateTime?
+  sentAt                 DateTime?
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
+}
+
+model Suppression {
+  id              String   @id @default(cuid())
+  normalizedEmail String   @unique
+  reason          String
+  createdAt       DateTime @default(now())
+}
+
+model AuditEvent {
+  id           String   @id @default(cuid())
+  actorId      String?
+  actor        User?    @relation(fields: [actorId], references: [id])
+  action       String
+  entityType   String
+  entityId     String
+  metadataJson String
+  createdAt    DateTime @default(now())
+
+  @@index([entityType, entityId, createdAt])
+}

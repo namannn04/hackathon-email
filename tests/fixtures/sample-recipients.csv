@@ -1,0 +1,10 @@
+Name,Email
+Ada,ada@example.com
+Sam,sam@example.org
+Grace,grace@example.net
+Duplicate,ADA@example.com
+Invalid,not-an-email
+Linus,linus@example.com
+Margaret,margaret@example.org
+Katherine,katherine@example.net
+Barbara,barbara@example.com

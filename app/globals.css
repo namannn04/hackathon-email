@@ -1,0 +1,59 @@
+@import 'tailwindcss';
+
+:root {
+  --background: #f7f7f5;
+  --foreground: #20201d;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--background);
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.field-input {
+  width: 100%;
+  height: 2.75rem;
+  border: 1px solid #d9d9d2;
+  border-radius: 0.75rem;
+  background: #fafaf8;
+  padding: 0 0.75rem;
+  color: #2c2c28;
+  font-size: 0.875rem;
+  outline: none;
+}
+
+.field-input:focus {
+  border-color: #748c7e;
+  box-shadow: 0 0 0 3px rgb(113 135 122 / 12%);
+}
+
+.field-input::placeholder {
+  color: #a0a099;
+}
