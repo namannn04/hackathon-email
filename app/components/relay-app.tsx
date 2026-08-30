@@ -80,6 +80,17 @@ export function RelayApp({ view, eventId, mailTaskId }: { view: AppView; eventId
     }
   }
 
+  async function disconnectGmailAccount(id: string) {
+    setError(null);
+    try {
+      const result = await api<{ email: string }>('/api/gmail/accounts', { method: 'DELETE', body: JSON.stringify({ id }) });
+      setNotice(`${result.email} was disconnected. Relay can no longer send from it.`);
+      await load();
+    } catch (accountError) {
+      setError(accountError instanceof Error ? accountError.message : 'Could not disconnect the account.');
+    }
+  }
+
   async function createEvent(form: FormData) {
     const response = await fetch('/api/events', { method: 'POST', body: form });
     const data = await response.json() as { eventId: string; accepted: number; invalid: number; duplicates: number; error?: { message?: string } };
@@ -141,7 +152,7 @@ export function RelayApp({ view, eventId, mailTaskId }: { view: AppView; eventId
       {notice ? <Toast tone="success" message={notice} onClose={() => setNotice(null)} /> : null}
       {error ? <Toast tone="error" message={error} onClose={() => setError(null)} /> : null}
       {view === 'campaign' ? <BatchPicker overview={overview} onPreview={previewBatch} onSend={sendBatch} onAddMockAccount={addMockAccount} /> : null}
-      {view === 'batches' ? <MyBatchesPanel overview={overview} onAddMockAccount={addMockAccount} /> : null}
+      {view === 'batches' ? <MyBatchesPanel overview={overview} onAddMockAccount={addMockAccount} onDisconnectAccount={disconnectGmailAccount} /> : null}
       {view === 'admin' ? <AdminPanel overview={overview} onCreateEvent={createEvent} onCreateMailTask={createMailTask} onAddSuppression={addSuppression} onRemoveSuppression={removeSuppression} onCreateInvite={createEventInvite} onRevokeInvite={revokeEventInvite} /> : null}
     </RelayShell>
   );

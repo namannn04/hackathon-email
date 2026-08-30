@@ -41,3 +41,6 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+
+# Local test fixture, not part of the app.
+test-recipients.csv
