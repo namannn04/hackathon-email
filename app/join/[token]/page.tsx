@@ -24,7 +24,7 @@ export default async function JoinEventPage({ params }: { params: Promise<{ toke
       />
     );
   }
-  redirect(`/?eventId=${eventId}&joined=1`);
+  redirect(`/dashboard?eventId=${eventId}&joined=1`);
 }
 
 function InviteSignIn({ token }: { token: string }) {

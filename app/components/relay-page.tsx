@@ -5,10 +5,10 @@ import { MarketingHome } from './marketing-home';
 import type { AppView } from './types';
 import Link from 'next/link';
 
-export async function RelayPage({ view, eventId, mailTaskId }: { view: AppView; eventId?: string | null; mailTaskId?: string | null }) {
+export async function RelayPage({ view, eventId, mailTaskId, publicLanding = false }: { view: AppView; eventId?: string | null; mailTaskId?: string | null; publicLanding?: boolean }) {
   if (!isNeonAuthConfigured() || !isDatabaseConfigured()) return <SetupScreen />;
   const { data: session } = await getNeonAuth().getSession();
-  if (!session?.user) return view === 'campaign' ? <MarketingHome /> : <SignInScreen />;
+  if (!session?.user) return publicLanding ? <MarketingHome /> : <SignInScreen />;
   return <RelayApp view={view} eventId={eventId} mailTaskId={mailTaskId} />;
 }
 

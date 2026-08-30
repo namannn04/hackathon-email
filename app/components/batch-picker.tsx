@@ -47,12 +47,12 @@ export function BatchPicker({ overview, onPreview, onSend, onAddMockAccount }: {
 
       <section className="mb-6 grid gap-3 rounded-[20px] border border-[#dcdcd5] bg-white p-5 md:grid-cols-2">
         <label className="text-xs font-medium text-[#676760]">Event
-          <select value={overview.event.id} onChange={(e) => router.push(`/?eventId=${encodeURIComponent(e.target.value)}`)} className="field-input mt-2">
+          <select value={overview.event.id} onChange={(e) => router.push(`/dashboard?eventId=${encodeURIComponent(e.target.value)}`)} className="field-input mt-2">
             {overview.events.map((event) => <option key={event.id} value={event.id}>{event.name}</option>)}
           </select>
         </label>
         <label className="text-xs font-medium text-[#676760]">Mail task
-          <select value={task?.id ?? ''} onChange={(e) => router.push(`/?eventId=${encodeURIComponent(overview.event!.id)}&mailTaskId=${encodeURIComponent(e.target.value)}`)} className="field-input mt-2" disabled={!overview.event.mailTasks.length}>
+          <select value={task?.id ?? ''} onChange={(e) => router.push(`/dashboard?eventId=${encodeURIComponent(overview.event!.id)}&mailTaskId=${encodeURIComponent(e.target.value)}`)} className="field-input mt-2" disabled={!overview.event.mailTasks.length}>
             {!overview.event.mailTasks.length ? <option value="">No mail task yet</option> : null}
             {overview.event.mailTasks.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
@@ -96,7 +96,7 @@ export function BatchPicker({ overview, onPreview, onSend, onAddMockAccount }: {
                 <option value="">Choose Gmail</option>{overview.gmailAccounts.map((account) => <option key={account.id} value={account.id}>{account.email}</option>)}
               </select>
             </label>
-            {overview.mockTransport ? <button onClick={() => void onAddMockAccount()} className="w-full rounded-xl border border-[#d6d6cf] px-3 py-2 text-xs font-medium">Add test Gmail</button> : <a href={`/api/gmail/connect?returnTo=${encodeURIComponent(`/?eventId=${preview.eventId}&mailTaskId=${preview.mailTaskId}`)}`} className="block rounded-xl border border-[#d6d6cf] px-3 py-2 text-center text-xs font-medium">Connect another Gmail</a>}
+            {overview.mockTransport ? <button onClick={() => void onAddMockAccount()} className="w-full rounded-xl border border-[#d6d6cf] px-3 py-2 text-xs font-medium">Add test Gmail</button> : <a href={`/api/gmail/connect?returnTo=${encodeURIComponent(`/dashboard?eventId=${preview.eventId}&mailTaskId=${preview.mailTaskId}`)}`} className="block rounded-xl border border-[#d6d6cf] px-3 py-2 text-center text-xs font-medium">Connect another Gmail</a>}
           </div>
           <div className="space-y-4">
             <div><p className="mb-2 text-xs font-medium text-[#66665f]">BCC · {preview.bcc.length} addresses</p><div className="max-h-40 overflow-auto rounded-xl border border-[#e0e0da] bg-[#fafaf8] p-3 font-mono text-[11px] leading-5 text-[#686861]">{preview.bcc.join(', ')}</div></div>

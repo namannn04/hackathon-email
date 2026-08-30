@@ -29,13 +29,26 @@ body {
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
 
 button,
 a {
   -webkit-tap-highlight-color: transparent;
+}
+
+button:not(:disabled),
+summary,
+select {
+  cursor: pointer;
+}
+
+::selection {
+  background: #cfe0d4;
+  color: #203b2f;
 }
 
 .field-input {
@@ -55,6 +68,49 @@ a {
   box-shadow: 0 0 0 3px rgb(113 135 122 / 12%);
 }
 
+.field-input:disabled {
+  cursor: not-allowed;
+  border-color: #e4e7e4;
+  background: #f3f5f3;
+  color: #9a9f9a;
+}
+
 .field-input::placeholder {
   color: #a0a099;
+}
+
+.file-input {
+  display: block;
+  width: 100%;
+  min-height: 2.75rem;
+  overflow: hidden;
+  border: 1px solid #d9dfda;
+  border-radius: 0.75rem;
+  background: #fafbfa;
+  color: #626b64;
+  font-size: 0.75rem;
+  outline: none;
+}
+
+.file-input::file-selector-button {
+  height: 2.75rem;
+  margin-right: 0.75rem;
+  border: 0;
+  border-right: 1px solid #d9dfda;
+  background: #eef2ef;
+  padding: 0 0.9rem;
+  color: #405246;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.file-input:focus {
+  border-color: #748c7e;
+  box-shadow: 0 0 0 3px rgb(113 135 122 / 12%);
+}
+
+.file-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
 }

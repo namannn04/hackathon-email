@@ -22,23 +22,45 @@ export function AdminPanel({ overview, onCreateEvent, onCreateMailTask, onAddSup
   const [activityTask, setActivityTask] = useState('all');
   const router = useRouter();
   const event = overview.event;
-  const activities = useMemo(() => overview.activities.filter((item) => activityTask === 'all' || item.mailTaskId === activityTask), [overview.activities, activityTask]);
+  const activities = useMemo(
+    () => overview.activities.filter((item) => activityTask === 'all' || item.mailTaskId === activityTask),
+    [overview.activities, activityTask],
+  );
+  const allTasks = overview.events.flatMap((item) => item.mailTasks);
+  const totalParticipants = overview.events.reduce((sum, item) => sum + item.recipientCount, 0);
+  const successfulSets = allTasks.reduce((sum, task) => sum + task.sentBatches, 0);
 
-  if (overview.user.role !== 'ORGANIZER') return <div className="rounded-2xl border border-[#deded8] bg-white p-8">Organizer access required.</div>;
+  if (overview.user.role !== 'ORGANIZER') {
+    return <div className="rounded-[24px] border border-[#dce2dc] bg-white p-8 shadow-sm">Organizer access required.</div>;
+  }
 
   async function submitEvent(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault(); setEventWorking(true); setResult(null);
-    try { const value = await onCreateEvent(new FormData(e.currentTarget)); setResult(value); e.currentTarget.reset(); } catch { /* Parent displays the API error. */ } finally { setEventWorking(false); }
+    e.preventDefault();
+    setEventWorking(true);
+    setResult(null);
+    try {
+      const value = await onCreateEvent(new FormData(e.currentTarget));
+      setResult(value);
+      e.currentTarget.reset();
+    } catch { /* Parent displays the API error. */ } finally {
+      setEventWorking(false);
+    }
   }
+
   async function submitTask(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault(); if (!event) return; setTaskWorking(true);
+    e.preventDefault();
+    if (!event) return;
+    setTaskWorking(true);
     const form = new FormData(e.currentTarget);
     form.set('eventId', event.id);
     try {
       await onCreateMailTask(form);
       e.currentTarget.reset();
-    } catch { /* Parent displays the API error. */ } finally { setTaskWorking(false); }
+    } catch { /* Parent displays the API error. */ } finally {
+      setTaskWorking(false);
+    }
   }
+
   async function createInvite() {
     if (!event) return;
     try {
@@ -49,43 +71,190 @@ export function AdminPanel({ overview, onCreateEvent, onCreateMailTask, onAddSup
   }
 
   return (
-    <>
-      <div className="mb-8"><p className="mb-3 text-xs text-[#77776f]">Organizer workspace</p><h1 className="text-2xl font-semibold tracking-[-0.03em] sm:text-[30px]">Admin portal</h1><p className="mt-2 max-w-3xl text-sm leading-6 text-[#686861]">Manage participant lists by event, create multiple mail tasks inside each event, and see every successful or failed set automatically.</p></div>
+    <div className="mx-auto max-w-[1280px]">
+      <header className="mb-7 flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
+        <div>
+          <div className="mb-3 flex items-center gap-2 text-xs font-medium text-[#7b837c]"><span>Workspace</span><span className="text-[#b2b8b2]">/</span><span className="text-[#365644]">Admin portal</span></div>
+          <h1 className="text-3xl font-semibold tracking-[-0.045em] text-[#1f2c24] sm:text-[34px]">Keep every event on track</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-[#69716a]">Manage event lists, prepare mail tasks, invite volunteers, and monitor delivery from one calm workspace.</p>
+        </div>
+        {event ? (
+          <div className="flex items-center gap-3 rounded-2xl border border-[#dce3dd] bg-white px-4 py-3 shadow-[0_8px_24px_rgba(35,54,44,.05)]">
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#e7efe9] text-xs font-bold text-[#315c43]">EV</span>
+            <div className="min-w-0"><p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#929992]">Selected event</p><p className="mt-0.5 max-w-56 truncate text-sm font-semibold text-[#29372f]">{event.name}</p></div>
+          </div>
+        ) : null}
+      </header>
 
-      <section className="mb-6 grid gap-3 sm:grid-cols-3"><Metric label="Events" value={String(overview.events.length)} note={`${overview.events.reduce((sum, item) => sum + item.mailTasks.length, 0)} mail tasks`} /><Metric label="Participants" value={formatNumber(overview.events.reduce((sum, item) => sum + item.recipientCount, 0))} note="Stored once per event" /><Metric label="Successful sets" value={formatNumber(overview.events.flatMap((item) => item.mailTasks).reduce((sum, task) => sum + task.sentBatches, 0))} note="Recorded automatically" /></section>
+      <section className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Workspace overview">
+        <Metric marker="EV" label="Events" value={String(overview.events.length)} note={`${allTasks.length} mail tasks`} />
+        <Metric marker="PT" label="Participants" value={formatNumber(totalParticipants)} note="Stored by event" />
+        <Metric marker="OK" label="Successful sets" value={formatNumber(successfulSets)} note="Recorded automatically" />
+        <Metric marker="IN" label="Active invite links" value={String(overview.invites.length)} note="Event-only access" />
+      </section>
 
-      <div className="mb-6 grid gap-6 xl:grid-cols-[minmax(300px,.7fr)_minmax(0,1.3fr)]">
-        <section className="rounded-[20px] border border-[#dcdcd5] bg-white p-5">
-          <h2 className="text-[15px] font-semibold">Events</h2><p className="mt-1 text-xs text-[#77776f]">Choose an event to manage its mail tasks and activity.</p>
-          <div className="mt-4 space-y-2">{overview.events.length ? overview.events.map((item) => <button key={item.id} onClick={() => router.push(`/admin?eventId=${encodeURIComponent(item.id)}`)} className={`w-full rounded-2xl border p-4 text-left ${event?.id === item.id ? 'border-[#71877a] bg-[#f0f5f1]' : 'border-[#e1e1db] bg-[#fafaf8]'}`}><div className="flex justify-between gap-3"><span className="truncate text-sm font-semibold">{item.name}</span><span className="text-[10px] uppercase text-[#6f786f]">{item.status}</span></div><p className="mt-2 text-xs text-[#77776f]">{formatNumber(item.recipientCount)} participants · {item.mailTasks.length} mail tasks · {item.memberCount} members</p></button>) : <p className="py-4 text-sm text-[#77776f]">Create the first event below.</p>}</div>
+      <section className="mb-6 overflow-hidden rounded-[24px] border border-[#dce2dc] bg-white shadow-[0_12px_34px_rgba(31,48,39,.05)]">
+        <div className="grid min-h-[360px] lg:grid-cols-[320px_1fr]">
+          <div className="border-b border-[#e5e9e5] bg-[#fafbfa] p-5 lg:border-b-0 lg:border-r">
+            <div className="flex items-start justify-between gap-3">
+              <div><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8a928b]">Event navigator</p><h2 className="mt-1 text-base font-semibold text-[#29352e]">Your events</h2></div>
+              <span className="rounded-full bg-[#e9eeea] px-2.5 py-1 text-[11px] font-semibold text-[#5f6c63]">{overview.events.length}</span>
+            </div>
+            <div className="mt-4 space-y-2">
+              {overview.events.length ? overview.events.map((item) => {
+                const selected = event?.id === item.id;
+                return (
+                  <button
+                    type="button"
+                    key={item.id}
+                    onClick={() => router.push(`/admin?eventId=${encodeURIComponent(item.id)}`)}
+                    aria-pressed={selected}
+                    className={`w-full rounded-2xl border p-4 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-[#6d8876] ${selected ? 'border-[#b9cabd] bg-white shadow-[0_8px_20px_rgba(35,54,44,.07)]' : 'border-transparent hover:border-[#dfe5df] hover:bg-white'}`}
+                  >
+                    <div className="flex items-center justify-between gap-3"><span className="truncate text-sm font-semibold text-[#2b3930]">{item.name}</span><StatusBadge status={item.status} /></div>
+                    <div className="mt-3 flex items-center gap-3 text-[11px] text-[#7a827b]"><span>{formatNumber(item.recipientCount)} people</span><span className="h-1 w-1 rounded-full bg-[#c4c9c4]" /><span>{item.mailTasks.length} tasks</span></div>
+                  </button>
+                );
+              }) : <EmptyState title="No events yet" body="Create your first event below to import participants and start a campaign." />}
+            </div>
+          </div>
+
+          <div className="p-5 sm:p-6 lg:p-7">
+            {event ? (
+              <>
+                <div className="flex flex-col justify-between gap-4 border-b border-[#edf0ed] pb-5 sm:flex-row sm:items-start">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2"><h2 className="text-xl font-semibold tracking-[-0.025em] text-[#243229]">{event.name}</h2><StatusBadge status={event.status} /></div>
+                    <p className="mt-2 text-sm text-[#737b74]">{formatNumber(event.recipientCount)} participants · {event.memberCount} members · {event.mailTasks.length} mail tasks</p>
+                  </div>
+                  <button type="button" onClick={() => void createInvite()} className="inline-flex h-10 shrink-0 items-center justify-center rounded-xl bg-[#203b2f] px-4 text-xs font-semibold text-white shadow-[0_8px_18px_rgba(32,59,47,.18)] transition hover:bg-[#294a3a]">Create volunteer link</button>
+                </div>
+
+                {inviteUrl ? (
+                  <div className="mt-4 rounded-2xl border border-[#cfe0d3] bg-[#f3f8f4] p-3">
+                    <p className="mb-2 text-xs font-semibold text-[#376047]">Link created and copied</p>
+                    <div className="flex gap-2"><input aria-label="Volunteer invitation URL" readOnly value={inviteUrl} className="field-input min-w-0 flex-1 bg-white text-xs" /><button type="button" onClick={() => void navigator.clipboard?.writeText(inviteUrl)} className="rounded-xl border border-[#cad8cd] bg-white px-3 text-xs font-semibold text-[#3c5a47]">Copy</button></div>
+                  </div>
+                ) : null}
+
+                <div className="mt-5 grid gap-3 md:grid-cols-2">
+                  {event.mailTasks.length ? event.mailTasks.map((task) => {
+                    const progress = task.totalBatches ? Math.round((task.sentBatches / task.totalBatches) * 100) : 0;
+                    return (
+                      <article key={task.id} className="rounded-2xl border border-[#e1e6e1] bg-[#fbfcfb] p-4 transition hover:border-[#cfd8d1] hover:bg-white">
+                        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="truncate text-sm font-semibold text-[#2b3830]">{task.name}</h3><p className="mt-1 truncate text-xs text-[#7b837c]">{task.subject}</p></div><StatusBadge status={task.status} /></div>
+                        <div className="mt-4 flex items-center justify-between text-[11px] text-[#747d75]"><span>{task.sentBatches} of {task.totalBatches} sets</span><span className="font-semibold text-[#42614e]">{progress}%</span></div>
+                        <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#e7ebe7]"><div className="h-full rounded-full bg-[#4a7a5c] transition-[width]" style={{ width: `${progress}%` }} /></div>
+                        <p className="mt-3 truncate text-[11px] text-[#8a918b]">To {task.toEmail} · {formatNumber(task.sentRecipients)}/{formatNumber(task.totalRecipients)} recipients</p>
+                      </article>
+                    );
+                  }) : <div className="md:col-span-2"><EmptyState title="No mail tasks yet" body="Use step 2 below to prepare this event’s first message and recipient sets." /></div>}
+                </div>
+
+                {overview.invites.some((invite) => invite.eventId === event.id) ? (
+                  <div className="mt-5 border-t border-[#edf0ed] pt-4"><p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8c938d]">Active volunteer links</p><div className="flex flex-wrap gap-2">{overview.invites.filter((invite) => invite.eventId === event.id).map((invite) => <button type="button" key={invite.id} onClick={() => void onRevokeInvite(invite.id)} className="rounded-xl border border-[#ead7d0] bg-[#fffaf8] px-3 py-2 text-xs font-medium text-[#9a5944] transition hover:bg-[#fff4ef]">Revoke · expires {new Date(invite.expiresAt).toLocaleDateString()}</button>)}</div></div>
+                ) : null}
+              </>
+            ) : <div className="grid h-full min-h-72 place-items-center"><EmptyState title="Select an event" body="Choose an event on the left to see its mail tasks, progress, members, and volunteer links." /></div>}
+          </div>
+        </div>
+      </section>
+
+      <div className="mb-3 flex items-end justify-between gap-4"><div><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#899089]">Campaign setup</p><h2 className="mt-1 text-xl font-semibold tracking-[-0.025em] text-[#26342b]">Create and prepare</h2></div><p className="hidden text-xs text-[#858d86] sm:block">Complete the steps from left to right</p></div>
+      <div className="mb-6 grid items-start gap-5 xl:grid-cols-2">
+        <section className="rounded-[24px] border border-[#dce2dc] bg-white p-5 shadow-[0_10px_30px_rgba(31,48,39,.04)] sm:p-6">
+          <SectionHeading step="01" title="Create event" description="Import the participant list once. Every mail task will reuse it." />
+          <form onSubmit={submitEvent} className="mt-6 space-y-4">
+            <Field label="Event name"><input name="name" required maxLength={120} className="field-input" placeholder="HackNova 2026" /></Field>
+            <Field label="Participant list" hint="CSV or XLSX"><input name="file" required type="file" accept=".csv,.xlsx" className="file-input" /></Field>
+            <button disabled={eventWorking} className="inline-flex h-11 items-center justify-center rounded-xl bg-[#203b2f] px-5 text-sm font-semibold text-white transition hover:bg-[#294a3a] disabled:cursor-not-allowed disabled:opacity-50">{eventWorking ? 'Importing participants…' : 'Create event'}</button>
+          </form>
+          {result ? <div className="mt-4 rounded-2xl border border-[#cee0d3] bg-[#f2f8f4] p-3 text-xs leading-5 text-[#315e43]">Imported <strong>{result.accepted}</strong> participants · {result.invalid} invalid · {result.duplicates} duplicates removed. <a className="font-semibold underline underline-offset-4" href={`/admin?eventId=${result.eventId}`}>Manage event</a></div> : null}
         </section>
 
-        <section className="rounded-[20px] border border-[#dcdcd5] bg-white p-5 sm:p-6">
-          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start"><div><h2 className="text-[15px] font-semibold">{event ? event.name : 'Select an event'}</h2><p className="mt-1 text-xs text-[#77776f]">Event-only volunteer access and mail task progress.</p></div>{event ? <button onClick={() => void createInvite()} className="h-9 rounded-xl bg-[#263d32] px-3.5 text-xs font-semibold text-white">Create event link</button> : null}</div>
-          {inviteUrl ? <div className="mt-4 flex gap-2"><input readOnly value={inviteUrl} className="field-input min-w-0 flex-1 text-xs" /><button onClick={() => void navigator.clipboard?.writeText(inviteUrl)} className="rounded-xl border border-[#d6d6cf] px-3 text-xs font-medium">Copy</button></div> : null}
-          {event ? <div className="mt-5 grid gap-3 md:grid-cols-2">{event.mailTasks.length ? event.mailTasks.map((task) => { const progress = task.totalBatches ? Math.round(task.sentBatches / task.totalBatches * 100) : 0; return <article key={task.id} className="rounded-2xl border border-[#e1e1db] bg-[#fafaf8] p-4"><div className="flex justify-between gap-3"><h3 className="truncate text-sm font-semibold">{task.name}</h3><span className="text-[10px] uppercase text-[#6e776e]">{task.status}</span></div><p className="mt-2 truncate text-xs text-[#77776f]">To: {task.toEmail}</p><p className="mt-1 truncate text-xs text-[#77776f]">{task.subject}</p><div className="mt-4 h-1.5 overflow-hidden rounded-full bg-[#e4e4df]"><div className="h-full bg-[#3f7956]" style={{ width: `${progress}%` }} /></div><p className="mt-2 text-xs text-[#77776f]">{task.sentBatches}/{task.totalBatches} sets · {formatNumber(task.sentRecipients)}/{formatNumber(task.totalRecipients)} BCC recipients</p></article>; }) : <p className="text-sm text-[#77776f]">No mail tasks yet. Create one below.</p>}</div> : null}
-          {event ? <div className="mt-5 flex flex-wrap gap-2">{overview.invites.filter((invite) => invite.eventId === event.id).map((invite) => <button key={invite.id} onClick={() => void onRevokeInvite(invite.id)} className="rounded-xl border border-[#dfcbc4] px-3 py-2 text-xs text-[#98523b]">Revoke active link · {new Date(invite.expiresAt).toLocaleDateString()}</button>)}</div> : null}
+        <section className="rounded-[24px] border border-[#dce2dc] bg-white p-5 shadow-[0_10px_30px_rgba(31,48,39,.04)] sm:p-6">
+          <SectionHeading step="02" title={event ? `Create mail task for ${event.name}` : 'Create mail task'} description={event ? 'Prepare the fixed message and let Relay build its recipient sets.' : 'Select or create an event before preparing its message.'} />
+          <form onSubmit={submitTask} className="mt-6 space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2"><Field label="Mail task name"><input name="name" required maxLength={120} disabled={!event} className="field-input" placeholder="Reminder — 3 days before" /></Field><Field label="Fixed To address"><input name="toEmail" required type="email" disabled={!event} className="field-input" placeholder="organizer@example.com" /></Field></div>
+            <Field label="Subject"><input name="subject" required maxLength={180} disabled={!event} className="field-input" placeholder="Your event update" /></Field>
+            <Field label="Plain-text body" hint="Required"><textarea name="bodyText" required rows={7} maxLength={50000} disabled={!event} className="field-input min-h-36 resize-y py-3" placeholder="Write the message volunteers will send…" /></Field>
+            <details className="group rounded-2xl border border-[#e0e5e0] bg-[#fafbfa] open:bg-white">
+              <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-semibold text-[#526057] outline-none"><span>Optional email formatting</span><span className="text-lg font-normal text-[#879087] transition group-open:rotate-45">+</span></summary>
+              <div className="space-y-4 border-t border-[#e7ebe7] p-4">
+                <Field label="HTML body" hint="Optional"><textarea name="bodyHtml" rows={6} maxLength={200000} disabled={!event} className="field-input min-h-28 resize-y py-3 font-mono text-xs" placeholder={'<div>\n  <p>Hi everyone,</p>\n</div>'} /><HelpText>Leave empty to use the plain-text body as-is. Use a full HTTPS URL for externally hosted images.</HelpText></Field>
+                <Field label="Inline images" hint="Up to 5, 2 MB each"><input name="images" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple disabled={!event} className="file-input" /><HelpText>Images travel inside the email, so recipients can see them without loading an external file.</HelpText></Field>
+                <Field label="Image placement"><select name="imagePlacement" defaultValue="above" disabled={!event} className="field-input"><option value="above">Above the text</option><option value="below">Below the text</option></select><HelpText>When using custom HTML, reference uploads as <code>cid:image1</code>, <code>cid:image2</code>, in order.</HelpText></Field>
+              </div>
+            </details>
+            <Field label="Target set size" hint="Maximum 499"><input name="batchSize" required type="number" min={1} max={499} defaultValue={300} disabled={!event} className="field-input max-w-40" /></Field>
+            <button disabled={!event || taskWorking} className="inline-flex h-11 items-center justify-center rounded-xl bg-[#203b2f] px-5 text-sm font-semibold text-white transition hover:bg-[#294a3a] disabled:cursor-not-allowed disabled:opacity-45">{taskWorking ? 'Creating recipient sets…' : 'Create mail task and sets'}</button>
+          </form>
         </section>
       </div>
 
-      <div className="grid items-start gap-6 xl:grid-cols-2">
-        <section className="rounded-[20px] border border-[#dcdcd5] bg-white p-5 sm:p-6"><h2 className="text-[15px] font-semibold">Create event</h2><p className="mt-1 text-xs text-[#77776f]">Import participants once. Every later mail task reuses this event list.</p><form onSubmit={submitEvent} className="mt-5 space-y-4"><Field label="Event name"><input name="name" required maxLength={120} className="field-input" placeholder="HackNova 2026" /></Field><Field label="Participant CSV/XLSX"><input name="file" required type="file" accept=".csv,.xlsx" className="block h-11 w-full rounded-xl border border-[#d9d9d2] bg-[#fafaf8] text-sm file:mr-3 file:h-full file:border-0 file:border-r file:border-[#d9d9d2] file:px-3" /></Field><button disabled={eventWorking} className="h-11 rounded-xl bg-[#263d32] px-5 text-sm font-semibold text-white disabled:opacity-50">{eventWorking ? 'Importing…' : 'Create event'}</button></form>{result ? <div className="mt-4 rounded-xl bg-[#f0f6f2] p-3 text-xs text-[#315e43]">Imported {result.accepted} participants · {result.invalid} invalid · {result.duplicates} duplicates removed. <a className="font-semibold underline" href={`/admin?eventId=${result.eventId}`}>Manage event</a></div> : null}</section>
-
-        <section className="rounded-[20px] border border-[#dcdcd5] bg-white p-5 sm:p-6"><h2 className="text-[15px] font-semibold">Create mail task {event ? `for ${event.name}` : ''}</h2><p className="mt-1 text-xs leading-5 text-[#77776f]">Each set becomes one message. Remainders under 100 merge into the previous set when Gmail’s 500-recipient limit allows.</p><form onSubmit={submitTask} className="mt-5 space-y-4"><Field label="Mail task name"><input name="name" required maxLength={120} disabled={!event} className="field-input" placeholder="Reminder — 3 days before" /></Field><Field label="Fixed To address"><input name="toEmail" required type="email" disabled={!event} className="field-input" placeholder="organizer@example.com" /></Field><Field label="Subject"><input name="subject" required maxLength={180} disabled={!event} className="field-input" /></Field><Field label="Body"><textarea name="bodyText" required rows={7} maxLength={50000} disabled={!event} className="field-input min-h-36 resize-y py-3" /></Field><Field label="HTML body (optional)"><textarea name="bodyHtml" rows={6} maxLength={200000} disabled={!event} className="field-input min-h-28 resize-y py-3 font-mono text-xs" placeholder={'<div>\n  <img src="https://your-domain/poster.png" width="600" alt="Poster">\n  <p>Hi everyone,</p>\n</div>'} /><p className="mt-1.5 text-[11px] leading-4 text-[#8a8a82]">Leave empty to send the plain body as-is. Fill it to control layout or include an image — host the image somewhere public and reference it with a full https URL. The plain body above is still sent as the text alternative.</p></Field><Field label="Inline images (optional)"><input name="images" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple disabled={!event} className="field-input h-auto py-2.5 text-xs" /><p className="mt-1.5 text-[11px] leading-4 text-[#8a8a82]">Up to 5 images, 2 MB each. They travel inside the message, so recipients see them without loading anything.</p></Field><Field label="Image placement"><select name="imagePlacement" defaultValue="above" disabled={!event} className="field-input"><option value="above">Above the text</option><option value="below">Below the text</option></select><p className="mt-1.5 text-[11px] leading-4 text-[#8a8a82]">Used when the HTML body is empty. Write an HTML body instead to place images anywhere, referencing them as <code>cid:image1</code>, <code>cid:image2</code>, in upload order.</p></Field><Field label="Target set size"><input name="batchSize" required type="number" min={1} max={499} defaultValue={300} disabled={!event} className="field-input" /></Field><button disabled={!event || taskWorking} className="h-11 rounded-xl bg-[#263d32] px-5 text-sm font-semibold text-white disabled:opacity-50">{taskWorking ? 'Creating sets…' : 'Create mail task and sets'}</button></form></section>
-      </div>
-
-      <section className="mt-6 overflow-hidden rounded-[20px] border border-[#dcdcd5] bg-white"><div className="flex flex-col justify-between gap-3 border-b border-[#e6e6e0] px-5 py-4 sm:flex-row sm:items-center"><div><h2 className="text-[15px] font-semibold">Automatic activity board {event ? `· ${event.name}` : ''}</h2><p className="mt-1 text-xs text-[#77776f]">No manual tick marks. Successful Gmail sends and failures appear here automatically.</p></div><select value={activityTask} onChange={(e) => setActivityTask(e.target.value)} className="rounded-xl border border-[#d9d9d2] bg-white px-3 py-2 text-xs"><option value="all">All mail tasks</option>{event?.mailTasks.map((task) => <option key={task.id} value={task.id}>{task.name}</option>)}</select></div><div className="divide-y divide-[#ecece7]">{activities.length ? activities.map((item) => <div key={item.id} className="grid gap-2 px-5 py-4 sm:grid-cols-[auto_1fr_auto] sm:items-center"><span className={`h-2.5 w-2.5 rounded-full ${item.status === 'SUCCESS' ? 'bg-[#3f8b62]' : item.status === 'FAILURE' ? 'bg-[#b85d45]' : 'bg-[#9a9a92]'}`} /><div><p className="text-sm font-medium">{item.detail ?? item.action}</p><p className="mt-1 text-xs text-[#77776f]">{item.actorName ?? item.actorEmail ?? 'System'}{item.mailTaskName ? ` · ${item.mailTaskName}` : ''}{item.batchNumber ? ` · Set #${item.batchNumber}` : ''}{item.emailCount ? ` · ${item.emailCount} emails` : ''}</p></div><time className="text-xs text-[#85857e]">{new Date(item.createdAt).toLocaleString()}</time></div>) : <p className="p-8 text-center text-sm text-[#77776f]">Activity will appear after this event is created and sets are sent.</p>}</div></section>
+      <section className="mb-6 overflow-hidden rounded-[24px] border border-[#dce2dc] bg-white shadow-[0_10px_30px_rgba(31,48,39,.04)]">
+        <div className="flex flex-col justify-between gap-4 border-b border-[#e8ece8] px-5 py-5 sm:flex-row sm:items-center sm:px-6">
+          <div><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#899089]">Live operations</p><h2 className="mt-1 text-base font-semibold text-[#29372f]">Activity {event ? `· ${event.name}` : ''}</h2><p className="mt-1 text-xs text-[#7a827b]">Successful Gmail sends and failures are recorded here automatically.</p></div>
+          <select aria-label="Filter activity by mail task" value={activityTask} onChange={(e) => setActivityTask(e.target.value)} className="field-input w-full bg-white text-xs sm:w-52"><option value="all">All mail tasks</option>{event?.mailTasks.map((task) => <option key={task.id} value={task.id}>{task.name}</option>)}</select>
+        </div>
+        <div className="divide-y divide-[#edf0ed]">
+          {activities.length ? activities.map((item) => (
+            <div key={item.id} className="grid gap-3 px-5 py-4 sm:grid-cols-[auto_1fr_auto] sm:items-center sm:px-6">
+              <span className={`grid h-8 w-8 place-items-center rounded-full text-[10px] font-bold ${item.status === 'SUCCESS' ? 'bg-[#e6f2e9] text-[#34704c]' : item.status === 'FAILURE' ? 'bg-[#f9eae5] text-[#a45640]' : 'bg-[#ecefec] text-[#747c75]'}`}>{item.status === 'SUCCESS' ? 'OK' : item.status === 'FAILURE' ? '!' : '·'}</span>
+              <div><p className="text-sm font-medium text-[#303b34]">{item.detail ?? item.action}</p><p className="mt-1 text-xs text-[#7b837c]">{item.actorName ?? item.actorEmail ?? 'System'}{item.mailTaskName ? ` · ${item.mailTaskName}` : ''}{item.batchNumber ? ` · Set #${item.batchNumber}` : ''}{item.emailCount ? ` · ${item.emailCount} emails` : ''}</p></div>
+              <time className="text-xs text-[#8b928c] sm:text-right">{new Date(item.createdAt).toLocaleString()}</time>
+            </div>
+          )) : <EmptyState title="No activity yet" body="Sending results will appear here as soon as volunteers begin working through sets." />}
+        </div>
+      </section>
 
       <SuppressionSection overview={overview} onAdd={onAddSuppression} onRemove={onRemoveSuppression} />
-    </>
+    </div>
   );
 }
 
 function SuppressionSection({ overview, onAdd, onRemove }: { overview: Overview; onAdd: (email: string, reason: string) => Promise<void>; onRemove: (id: string) => Promise<void> }) {
-  async function submit(e: React.FormEvent<HTMLFormElement>) { e.preventDefault(); const form = new FormData(e.currentTarget); await onAdd(String(form.get('email')), String(form.get('reason'))); e.currentTarget.reset(); }
-  return <section className="mt-6 rounded-[20px] border border-[#dcdcd5] bg-white p-5"><h2 className="text-[15px] font-semibold">Suppression list</h2><form onSubmit={submit} className="mt-4 grid gap-2 sm:grid-cols-[220px_1fr_auto]"><input name="email" required type="email" className="field-input" placeholder="person@example.com" /><input name="reason" required className="field-input" placeholder="Reason" /><button className="rounded-xl border border-[#d6d6cf] px-4 text-sm font-medium">Add</button></form><div className="mt-4 divide-y divide-[#ecece7]">{overview.suppressions.map((item) => <div key={item.id} className="flex justify-between gap-3 py-3 text-sm"><div><p className="font-medium">{item.email}</p><p className="text-xs text-[#77776f]">{item.reason}</p></div><button onClick={() => void onRemove(item.id)} className="text-xs text-[#98523b]">Remove</button></div>)}</div></section>;
+  async function submit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    await onAdd(String(form.get('email')), String(form.get('reason')));
+    e.currentTarget.reset();
+  }
+
+  return (
+    <section className="rounded-[24px] border border-[#dce2dc] bg-white p-5 shadow-[0_10px_30px_rgba(31,48,39,.04)] sm:p-6">
+      <div className="flex items-start justify-between gap-4"><div><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#899089]">Safety controls</p><h2 className="mt-1 text-base font-semibold text-[#29372f]">Suppression list</h2><p className="mt-1 text-xs leading-5 text-[#7a827b]">Excluded addresses are left out of future mail tasks.</p></div><span className="rounded-full bg-[#f0f2f0] px-2.5 py-1 text-[11px] font-semibold text-[#69716a]">{overview.suppressions.length}</span></div>
+      <form onSubmit={submit} className="mt-5 grid gap-3 sm:grid-cols-[minmax(190px,1fr)_minmax(220px,1.4fr)_auto]"><input aria-label="Email to suppress" name="email" required type="email" className="field-input" placeholder="person@example.com" /><input aria-label="Suppression reason" name="reason" required className="field-input" placeholder="Reason for exclusion" /><button className="h-11 rounded-xl border border-[#ccd5ce] bg-[#f9faf9] px-5 text-sm font-semibold text-[#405246] transition hover:bg-[#f0f4f1]">Add address</button></form>
+      {overview.suppressions.length ? <div className="mt-5 divide-y divide-[#edf0ed] border-t border-[#edf0ed]">{overview.suppressions.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 py-3.5"><div className="min-w-0"><p className="truncate text-sm font-medium text-[#313d35]">{item.email}</p><p className="mt-0.5 truncate text-xs text-[#7c847d]">{item.reason}</p></div><button type="button" onClick={() => void onRemove(item.id)} className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium text-[#9a5944] transition hover:bg-[#fff3ef]">Remove</button></div>)}</div> : <p className="mt-5 rounded-2xl bg-[#fafbfa] p-4 text-center text-xs text-[#858d86]">No suppressed addresses.</p>}
+    </section>
+  );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block"><span className="mb-2 block text-xs font-medium text-[#5f5f58]">{label}</span>{children}</label>; }
-function Metric({ label, value, note }: { label: string; value: string; note: string }) { return <div className="rounded-2xl border border-[#deded8] bg-white p-4"><p className="text-xs text-[#77776f]">{label}</p><p className="mt-2 text-xl font-semibold">{value}</p><p className="mt-1 text-xs text-[#8a8a83]">{note}</p></div>; }
-function formatNumber(value: number) { return new Intl.NumberFormat('en-US').format(value); }
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return <label className="block"><span className="mb-2 flex items-center justify-between gap-3 text-xs font-semibold text-[#5f6861]"><span>{label}</span>{hint ? <span className="font-normal text-[#9aa09a]">{hint}</span> : null}</span>{children}</label>;
+}
+
+function HelpText({ children }: { children: React.ReactNode }) {
+  return <p className="mt-1.5 text-[11px] leading-4 text-[#8a918b]">{children}</p>;
+}
+
+function Metric({ marker, label, value, note }: { marker: string; label: string; value: string; note: string }) {
+  return <div className="rounded-[20px] border border-[#dce2dc] bg-white p-4 shadow-[0_8px_24px_rgba(31,48,39,.035)]"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-medium text-[#767e77]">{label}</p><p className="mt-2 text-2xl font-semibold tracking-[-0.035em] text-[#26342b]">{value}</p><p className="mt-1 text-xs text-[#929892]">{note}</p></div><span className="grid h-9 w-9 place-items-center rounded-xl bg-[#edf2ee] text-[10px] font-bold text-[#4d6857]">{marker}</span></div></div>;
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const positive = status === 'ACTIVE' || status === 'READY' || status === 'SUCCESS';
+  return <span className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-bold uppercase tracking-[0.08em] ${positive ? 'bg-[#e6f1e8] text-[#3b6b4b]' : 'bg-[#eef0ee] text-[#717871]'}`}>{status.toLowerCase()}</span>;
+}
+
+function SectionHeading({ step, title, description }: { step: string; title: string; description: string }) {
+  return <div className="flex gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#203b2f] text-[11px] font-bold text-white">{step}</span><div><h2 className="text-base font-semibold text-[#29372f]">{title}</h2><p className="mt-1 text-xs leading-5 text-[#7b837c]">{description}</p></div></div>;
+}
+
+function EmptyState({ title, body }: { title: string; body: string }) {
+  return <div className="p-6 text-center"><span className="mx-auto grid h-10 w-10 place-items-center rounded-2xl bg-[#edf2ee] text-sm font-bold text-[#577060]">R</span><p className="mt-3 text-sm font-semibold text-[#46534b]">{title}</p><p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-[#858c86]">{body}</p></div>;
+}
+
+function formatNumber(value: number) {
+  return new Intl.NumberFormat('en-US').format(value);
+}
