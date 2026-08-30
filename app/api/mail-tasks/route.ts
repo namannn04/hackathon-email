@@ -1,6 +1,6 @@
 import { requireOrganizer } from '@/lib/auth/current-user';
 import { assertTrustedMutation, HttpError, jsonError, readString } from '@/lib/http';
-import { createMailTask } from '@/lib/mail-tasks/manage';
+import { createMailTask, type ImagePlacement } from '@/lib/mail-tasks/manage';
 import { NextRequest, NextResponse } from 'next/server';
 
 const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
@@ -29,6 +29,7 @@ export async function POST(request: NextRequest) {
       bodyText: readString(form.get('bodyText'), 'Email content', 50_000),
       bodyHtml: readOptionalHtml(form.get('bodyHtml')),
       images: await readImages(form.getAll('images')),
+      imagePlacement: readPlacement(form.get('imagePlacement')),
       batchSize,
     }, actor);
     return NextResponse.json(result, { status: 201 });
@@ -47,6 +48,10 @@ function readOptionalHtml(value: unknown): string | undefined {
     throw new HttpError(400, 'HTML body is too long.', 'VALIDATION_ERROR');
   }
   return trimmed;
+}
+
+function readPlacement(value: unknown): ImagePlacement {
+  return value === 'below' ? 'below' : 'above';
 }
 
 async function readImages(entries: FormDataEntryValue[]) {

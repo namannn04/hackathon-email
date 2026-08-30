@@ -20,7 +20,7 @@ A mail task stores a plain-text body and an HTML body, and both are sent as a `m
 
 - Leaving the HTML body empty keeps the current behaviour: the plain text is escaped into a simple HTML document.
 - Filling it in uses that HTML verbatim, so an organizer can control layout or reference a hosted image with `<img src="https://...">`.
-- Attaching images uploads them with the mail task and embeds them in the message itself as `multipart/related` parts. Reference them from the HTML body as `cid:image1`, `cid:image2`, in upload order. With no HTML body they are stacked above the text automatically.
+- Attaching images uploads them with the mail task and embeds them in the message itself as `multipart/related` parts. Reference them from the HTML body as `cid:image1`, `cid:image2`, in upload order. With no HTML body they are stacked on the side chosen by **Image placement**, above or below the text.
 
 Inline images are limited to 5 files, 2 MB each and 8 MB in total, because every recipient set carries its own copy of the message.
 

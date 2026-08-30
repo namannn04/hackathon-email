@@ -12,6 +12,7 @@ export async function createMailTask(input: {
   bodyText: string;
   bodyHtml?: string;
   images?: Array<{ filename: string; mimeType: string; dataBase64: string; byteSize: number }>;
+  imagePlacement?: ImagePlacement;
   batchSize: number;
 }, actor: User) {
   const prisma = getPrisma();
@@ -43,7 +44,7 @@ export async function createMailTask(input: {
       toEmail: input.toEmail.toLowerCase(),
       subject: input.subject,
       bodyText: input.bodyText,
-      bodyHtml: buildBodyHtml(input.bodyHtml, input.bodyText, images.map((image) => image.contentId)),
+      bodyHtml: buildBodyHtml(input.bodyHtml, input.bodyText, images.map((image) => image.contentId), input.imagePlacement),
       batchSize: input.batchSize,
       images: images.length
         ? { createMany: { data: images.map(({ contentId, filename, mimeType, dataBase64, byteSize, position }) => ({ contentId, filename, mimeType, dataBase64, byteSize, position })) } }
@@ -94,19 +95,33 @@ export async function createMailTask(input: {
   return { mailTaskId: task.id, eventId: event.id, batches: sizes.length, batchSizes: sizes };
 }
 
+export type ImagePlacement = 'above' | 'below';
+
 /**
- * The organizer's own HTML wins. Otherwise the plain body is escaped into a
- * simple document, with any uploaded images stacked above it so that an
- * organizer who only attaches a poster still gets a sensible message.
+ * The organizer's own HTML wins, and then placement is theirs to decide.
+ * Otherwise the plain body is escaped into a simple document with the
+ * uploaded images stacked on the chosen side of it.
  */
-function buildBodyHtml(bodyHtml: string | undefined, bodyText: string, contentIds: string[]): string {
+export function buildBodyHtml(
+  bodyHtml: string | undefined,
+  bodyText: string,
+  contentIds: string[],
+  placement: ImagePlacement = 'above',
+): string {
   const authored = bodyHtml?.trim();
   if (authored) return authored;
   if (!contentIds.length) return plainTextToHtml(bodyText);
   const pictures = contentIds
-    .map((contentId) => `<img src="cid:${contentId}" alt="" style="display:block;max-width:100%;height:auto;margin:0 0 16px" />`)
+    .map((contentId, index) => {
+      const spacing = placement === 'below'
+        ? `margin:${index === 0 ? '16px' : '0'} 0 16px`
+        : 'margin:0 0 16px';
+      return `<img src="cid:${contentId}" alt="" style="display:block;max-width:100%;height:auto;${spacing}" />`;
+    })
     .join('');
-  return `<div style="font-family:Arial,sans-serif;line-height:1.6">${pictures}${plainTextToHtml(bodyText)}</div>`;
+  const text = plainTextToHtml(bodyText);
+  const inner = placement === 'below' ? `${text}${pictures}` : `${pictures}${text}`;
+  return `<div style="font-family:Arial,sans-serif;line-height:1.6">${inner}</div>`;
 }
 
 function plainTextToHtml(value: string) {
