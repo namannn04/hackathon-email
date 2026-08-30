@@ -2,6 +2,7 @@ import { toBase64Url } from '@/lib/crypto/secrets';
 
 export function buildGmailMime(input: {
   sender: string;
+  to: string;
   recipients: string[];
   subject: string;
   bodyText: string;
@@ -10,11 +11,12 @@ export function buildGmailMime(input: {
   batchId: string;
 }): string {
   const sender = cleanHeader(input.sender);
+  const to = cleanHeader(input.to);
   const recipients = input.recipients.map(cleanHeader);
   const boundary = `relay_${input.batchId.replace(/[^a-z0-9]/gi, '')}`;
   const lines = [
     `From: ${sender}`,
-    `To: ${sender}`,
+    `To: ${to}`,
     foldAddressHeader('Bcc', recipients),
     `Subject: ${encodeHeader(input.subject)}`,
     `Message-ID: ${cleanHeader(input.messageId)}`,

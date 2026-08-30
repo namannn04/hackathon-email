@@ -1,6 +1,6 @@
-import { chatGPTSignInPath, getChatGPTUser } from '@/app/chatgpt-auth';
 import { requireAppUser } from '@/lib/auth/current-user';
-import { acceptCampaignInvite } from '@/lib/invites/access';
+import { acceptEventInvite } from '@/lib/invites/access';
+import { getNeonAuth, isNeonAuthConfigured } from '@/lib/auth/neon';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
@@ -8,14 +8,14 @@ export const dynamic = 'force-dynamic';
 
 export default async function JoinEventPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const identity = await getChatGPTUser();
-  if (!identity) return <InviteSignIn token={token} />;
+  const { data: session } = isNeonAuthConfigured() ? await getNeonAuth().getSession() : { data: null };
+  if (!session?.user) return <InviteSignIn token={token} />;
 
   const user = await requireAppUser();
-  let campaignId: string;
+  let eventId: string;
   try {
-    const membership = await acceptCampaignInvite(token, user);
-    campaignId = membership.campaignId;
+    const membership = await acceptEventInvite(token, user);
+    eventId = membership.eventId;
   } catch (error) {
     return (
       <InviteCard
@@ -24,7 +24,7 @@ export default async function JoinEventPage({ params }: { params: Promise<{ toke
       />
     );
   }
-  redirect(`/campaigns/${campaignId}?joined=1`);
+  redirect(`/?eventId=${eventId}&joined=1`);
 }
 
 function InviteSignIn({ token }: { token: string }) {
@@ -33,7 +33,7 @@ function InviteSignIn({ token }: { token: string }) {
     <InviteCard
       title="You’ve been invited to an event"
       message="Sign in once to join this event. Relay creates your volunteer account automatically—there is no separate signup form."
-      action={<a href={chatGPTSignInPath(returnTo)} className="inline-flex h-11 items-center rounded-xl bg-[#263d32] px-5 text-sm font-semibold text-white">Sign in and join event</a>}
+      action={<a href={`/auth/sign-in?callbackURL=${encodeURIComponent(returnTo)}`} className="inline-flex h-11 items-center rounded-xl bg-[#263d32] px-5 text-sm font-semibold text-white">Sign in and join event</a>}
     />
   );
 }

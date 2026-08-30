@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { AuthProvider } from '@/app/components/auth-provider';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 
@@ -16,12 +17,12 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.SITE_ORIGIN ?? 'http://localhost:3000'),
   title: 'Relay — Hackathon outreach without the spreadsheet shuffle',
   description:
-    'A focused internal tool for safely claiming recipient batches and sending hackathon outreach through Gmail.',
+    'Create event mail tasks and let authorized volunteers send one Gmail message per BCC recipient set.',
   openGraph: {
     title: 'Relay',
     description: 'Hackathon outreach, without the spreadsheet shuffle.',
     type: 'website',
-    images: [{ url: '/og.png', width: 1200, height: 630, alt: 'Relay batch claiming and send progress' }],
+    images: [{ url: '/og.png', width: 1200, height: 630, alt: 'Relay event mail tasks and send progress' }],
   },
   twitter: {
     card: 'summary_large_image',
@@ -33,8 +34,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>{children}</body>
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}><AuthProvider>{children}</AuthProvider></body>
     </html>
   );
 }

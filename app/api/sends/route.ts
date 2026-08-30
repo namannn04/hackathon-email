@@ -7,8 +7,12 @@ export async function POST(request: NextRequest) {
   try {
     assertTrustedMutation(request);
     const user = await requireAppUser();
-    const body = (await request.json()) as { batchId?: unknown };
-    return NextResponse.json(await sendBatch(readString(body.batchId, 'Batch', 80), user));
+    const body = (await request.json()) as { batchId?: unknown; gmailAccountId?: unknown };
+    return NextResponse.json(await sendBatch(
+      readString(body.batchId, 'Set', 80),
+      readString(body.gmailAccountId, 'Gmail account', 80),
+      user,
+    ));
   } catch (error) {
     return jsonError(error);
   }

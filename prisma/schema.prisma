@@ -1,10 +1,10 @@
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../generated/prisma"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider = "postgresql"
 }
 
 enum UserRole {
@@ -12,9 +12,14 @@ enum UserRole {
   VOLUNTEER
 }
 
-enum CampaignStatus {
-  DRAFT
-  READY
+enum EventStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+
+enum MailTaskStatus {
   ACTIVE
   PAUSED
   COMPLETED
@@ -23,13 +28,12 @@ enum CampaignStatus {
 
 enum BatchStatus {
   AVAILABLE
-  CLAIMED
   SENDING
   SENT
   FAILED
 }
 
-enum RecipientStatus {
+enum DeliveryStatus {
   PENDING
   RESERVED
   SENT
@@ -46,114 +50,171 @@ enum SendStatus {
   CANCELLED
 }
 
+enum ActivityStatus {
+  INFO
+  SUCCESS
+  FAILURE
+}
+
 model User {
-  id             String         @id @default(cuid())
-  externalId     String         @unique
-  email          String         @unique
-  name           String?
-  role           UserRole       @default(VOLUNTEER)
-  gmailAccounts  GmailAccount[]
-  claimedBatches Batch[]        @relation("BatchClaimer")
-  auditEvents    AuditEvent[]
-  campaignMemberships CampaignMember[]
-  campaignInvites CampaignInvite[]
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  id                  String          @id @default(cuid())
+  authUserId          String          @unique
+  email               String          @unique
+  name                String?
+  role                UserRole        @default(VOLUNTEER)
+  createdEvents       Event[]         @relation("EventCreator")
+  eventMemberships    EventMember[]
+  createdInvites      EventInvite[]   @relation("InviteCreator")
+  sentBatches         Batch[]         @relation("BatchSender")
+  gmailAccounts       GmailAccount[]
+  createdSuppressions Suppression[]   @relation("SuppressionCreator")
+  activities          ActivityEvent[] @relation("ActivityActor")
+  auditEvents         AuditEvent[]    @relation("AuditActor")
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
 }
 
-model Campaign {
-  id          String         @id @default(cuid())
+model Event {
+  id          String           @id @default(cuid())
   name        String
-  subject     String
-  bodyHtml    String
-  bodyText    String
-  batchSize   Int            @default(300)
-  status      CampaignStatus @default(DRAFT)
+  status      EventStatus      @default(ACTIVE)
   createdById String
-  recipients  Recipient[]
-  batches     Batch[]
-  members     CampaignMember[]
-  invites     CampaignInvite[]
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  createdBy   User             @relation("EventCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  members     EventMember[]
+  invites     EventInvite[]
+  recipients  EventRecipient[]
+  mailTasks   MailTask[]
+  activities  ActivityEvent[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([status, createdAt])
+  @@index([createdById])
 }
 
-model CampaignMember {
-  id         String   @id @default(cuid())
-  campaignId String
-  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role       UserRole @default(VOLUNTEER)
-  joinedAt   DateTime @default(now())
+model EventMember {
+  id       String   @id @default(cuid())
+  eventId  String
+  event    Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role     UserRole @default(VOLUNTEER)
+  joinedAt DateTime @default(now())
 
-  @@unique([campaignId, userId])
-  @@index([userId, campaignId])
+  @@unique([eventId, userId])
+  @@index([userId, eventId])
 }
 
-model CampaignInvite {
-  id          String   @id @default(cuid())
-  campaignId  String
-  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  tokenHash   String   @unique
+model EventInvite {
+  id          String    @id @default(cuid())
+  eventId     String
+  event       Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  tokenHash   String    @unique
   createdById String
-  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdBy   User      @relation("InviteCreator", fields: [createdById], references: [id], onDelete: Cascade)
   expiresAt   DateTime
   revokedAt   DateTime?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
-  @@index([campaignId, revokedAt, expiresAt])
+  @@index([eventId, revokedAt, expiresAt])
 }
 
-model Recipient {
-  id              String          @id @default(cuid())
-  campaignId      String
-  campaign        Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  batchId         String?
-  batch           Batch?          @relation(fields: [batchId], references: [id])
+model EventRecipient {
+  id              String              @id @default(cuid())
+  eventId         String
+  event           Event               @relation(fields: [eventId], references: [id], onDelete: Cascade)
   email           String
   normalizedEmail String
-  status          RecipientStatus @default(PENDING)
-  sentAt          DateTime?
+  deliveries      MailTaskRecipient[]
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
 
-  @@unique([campaignId, normalizedEmail])
-  @@index([campaignId, status])
-  @@index([batchId, status])
+  @@unique([eventId, normalizedEmail])
+  @@index([eventId])
+}
+
+model MailTask {
+  id         String              @id @default(cuid())
+  eventId    String
+  event      Event               @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name       String
+  toEmail    String
+  subject    String
+  bodyHtml   String
+  bodyText   String
+  batchSize  Int                 @default(300)
+  status     MailTaskStatus      @default(ACTIVE)
+  batches    Batch[]
+  deliveries MailTaskRecipient[]
+  activities ActivityEvent[]
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  @@index([eventId, status, createdAt])
 }
 
 model Batch {
-  id             String        @id @default(cuid())
-  campaignId     String
-  campaign       Campaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  id             String              @id @default(cuid())
+  mailTaskId     String
+  mailTask       MailTask            @relation(fields: [mailTaskId], references: [id], onDelete: Cascade)
   number         Int
-  status         BatchStatus   @default(AVAILABLE)
-  claimedById    String?
-  claimedBy      User?         @relation("BatchClaimer", fields: [claimedById], references: [id])
-  claimedAt      DateTime?
+  recipientCount Int                 @default(0)
+  sentCount      Int                 @default(0)
+  failedCount    Int                 @default(0)
+  status         BatchStatus         @default(AVAILABLE)
+  sentById       String?
+  sentBy         User?               @relation("BatchSender", fields: [sentById], references: [id], onDelete: SetNull)
   gmailAccountId String?
-  gmailAccount   GmailAccount? @relation(fields: [gmailAccountId], references: [id])
-  recipients     Recipient[]
+  gmailAccount   GmailAccount?       @relation(fields: [gmailAccountId], references: [id], onDelete: SetNull)
+  deliveries     MailTaskRecipient[]
   send           Send?
+  activities     ActivityEvent[]
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
 
-  @@unique([campaignId, number])
-  @@index([campaignId, status])
-  @@index([claimedById, status])
+  @@unique([mailTaskId, number])
+  @@index([mailTaskId, status])
+  @@index([sentById, status])
+  @@index([gmailAccountId, status])
+}
+
+model MailTaskRecipient {
+  id          String         @id @default(cuid())
+  mailTaskId  String
+  mailTask    MailTask       @relation(fields: [mailTaskId], references: [id], onDelete: Cascade)
+  batchId     String
+  batch       Batch          @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  recipientId String
+  recipient   EventRecipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  status      DeliveryStatus @default(PENDING)
+  sentAt      DateTime?
+  lastError   String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@unique([mailTaskId, recipientId])
+  @@index([batchId, status])
+  @@index([mailTaskId, status])
 }
 
 model GmailAccount {
-  id                     String   @id @default(cuid())
+  id                     String    @id @default(cuid())
   userId                 String
-  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   googleSubject          String
   email                  String
+  displayName            String?
   accessTokenCiphertext  String
   refreshTokenCiphertext String?
   tokenExpiresAt         DateTime
   scopes                 String
   revokedAt              DateTime?
   batches                Batch[]
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   @@unique([userId, googleSubject])
+  @@index([userId, revokedAt])
 }
 
 model Send {
@@ -173,24 +234,61 @@ model Send {
   sentAt                 DateTime?
   createdAt              DateTime   @default(now())
   updatedAt              DateTime   @updatedAt
+
+  @@index([status, nextAttemptAt])
 }
 
 model Suppression {
   id              String   @id @default(cuid())
   normalizedEmail String   @unique
   reason          String
+  createdById     String?
+  createdBy       User?    @relation("SuppressionCreator", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt       DateTime @default(now())
+}
+
+model ActivityEvent {
+  id         String         @id @default(cuid())
+  eventId    String
+  event      Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  mailTaskId String?
+  mailTask   MailTask?      @relation(fields: [mailTaskId], references: [id], onDelete: Cascade)
+  batchId    String?
+  batch      Batch?         @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  actorId    String?
+  actor      User?          @relation("ActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
+  action     String
+  status     ActivityStatus @default(INFO)
+  emailCount Int            @default(0)
+  detail     String?
+  createdAt  DateTime       @default(now())
+
+  @@index([eventId, createdAt])
+  @@index([mailTaskId, createdAt])
+  @@index([batchId, createdAt])
 }
 
 model AuditEvent {
   id           String   @id @default(cuid())
   actorId      String?
-  actor        User?    @relation(fields: [actorId], references: [id])
+  actor        User?    @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
   action       String
   entityType   String
   entityId     String
-  metadataJson String
+  metadataJson Json     @default("{}")
   createdAt    DateTime @default(now())
 
   @@index([entityType, entityId, createdAt])
+}
+
+model OAuthState {
+  state        String    @id
+  userId       String
+  codeVerifier String
+  returnTo     String
+  expiresAt    DateTime
+  usedAt       DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([userId, expiresAt])
 }

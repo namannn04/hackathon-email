@@ -2,10 +2,11 @@
 
 import type { AppView, Overview } from './types';
 import Link from 'next/link';
+import { SignOutButton } from './sign-out-button';
 
 const navItems: Array<{ view: AppView; href: string; icon: string; label: string }> = [
   { view: 'campaign', href: '/', icon: '✦', label: 'Events' },
-  { view: 'batches', href: '/my-batches', icon: '▦', label: 'My batches' },
+  { view: 'batches', href: '/my-batches', icon: '▦', label: 'Gmail & history' },
   { view: 'admin', href: '/admin', icon: '⌁', label: 'Admin portal' },
 ];
 
@@ -43,7 +44,7 @@ export function RelayShell({
           <div className="grid h-9 w-9 place-items-center rounded-full bg-[#e7e2d7] text-xs font-semibold text-[#5a4a35]" title={overview.user.email}>
             {initials || 'U'}
           </div>
-          <a href="/signout-with-chatgpt?return_to=%2F" className="text-[11px] font-medium text-[#686861] underline-offset-4 hover:underline sm:text-xs">Sign out</a>
+          <SignOutButton className="text-[11px] font-medium text-[#686861] underline-offset-4 hover:underline sm:text-xs" />
         </div>
       </header>
 
@@ -65,11 +66,6 @@ export function RelayShell({
                 >
                   <span aria-hidden="true" className="w-5 text-center text-base">{item.icon}</span>
                   {item.label}
-                  {item.view === 'batches' && overview.myBatches.filter((batch) => batch.status !== 'SENT').length > 0 ? (
-                    <span className="ml-auto rounded-full bg-[#263d32] px-2 py-0.5 text-[10px] text-white">
-                      {overview.myBatches.filter((batch) => batch.status !== 'SENT').length}
-                    </span>
-                  ) : null}
                 </Link>
               );
             })}
@@ -77,9 +73,13 @@ export function RelayShell({
           <div className="mt-auto rounded-2xl border border-[#deded8] bg-white p-4">
             <p className="text-xs font-semibold text-[#34342f]">Sending safely</p>
             <p className="mt-1.5 text-xs leading-5 text-[#77776f]">
-              Every batch claim is atomic and every send is idempotent.
+              One set becomes one BCC message, and every successful send is recorded automatically.
             </p>
-            <a href="/signout-with-chatgpt?return_to=%2F" className="mt-3 inline-flex text-xs font-medium text-[#686861] underline underline-offset-4">Sign out</a>
+            <SignOutButton className="mt-3 inline-flex text-xs font-medium text-[#686861] underline underline-offset-4" />
+            <p className="mt-3 flex flex-wrap gap-3 border-t border-[#ecece6] pt-3 text-[11px] text-[#8a8a82]">
+              <Link href="/privacy" className="underline-offset-4 hover:underline">Privacy</Link>
+              <Link href="/terms" className="underline-offset-4 hover:underline">Terms</Link>
+            </p>
           </div>
         </aside>
 

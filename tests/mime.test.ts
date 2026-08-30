@@ -12,6 +12,7 @@ describe('Gmail MIME construction', () => {
     const recipients = Array.from({ length: 300 }, (_, index) => `person${index}@example.com`);
     const raw = buildGmailMime({
       sender: 'sender@example.com',
+      to: 'organizer@example.com',
       recipients,
       subject: 'Hackathon invitation',
       bodyText: 'Hello team',
@@ -21,6 +22,7 @@ describe('Gmail MIME construction', () => {
     });
     const mime = decodeRaw(raw);
     expect(mime).toContain('Message-ID: <relay.batch-17@relay.internal>');
+    expect(mime).toContain('To: organizer@example.com');
     expect(mime).toContain('Bcc: person0@example.com');
     expect(mime).toContain('person299@example.com');
     const headerLines = mime.slice(0, mime.indexOf('\r\nSubject:')).split('\r\n').slice(2);
@@ -31,6 +33,7 @@ describe('Gmail MIME construction', () => {
   it('strips header injection from subject values', () => {
     const mime = decodeRaw(buildGmailMime({
       sender: 'sender@example.com',
+      to: 'organizer@example.com',
       recipients: ['one@example.com'],
       subject: 'Invite\r\nCc: attacker@example.com',
       bodyText: 'Hello',

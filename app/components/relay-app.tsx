@@ -1,43 +1,36 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { AdminPanel } from './admin-panel';
 import { BatchPicker } from './batch-picker';
 import { MyBatchesPanel } from './my-batches-panel';
 import { RelayShell } from './relay-shell';
-import type { AppView, Overview } from './types';
+import type { AppView, BatchPreview, Overview } from './types';
 
-export function RelayApp({ view, campaignId }: { view: AppView; campaignId?: string | null }) {
-  const router = useRouter();
+export function RelayApp({ view, eventId, mailTaskId }: { view: AppView; eventId?: string | null; mailTaskId?: string | null }) {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const query = campaignId ? `?campaignId=${encodeURIComponent(campaignId)}` : '';
+    const params = new URLSearchParams();
+    if (eventId) params.set('eventId', eventId);
+    if (mailTaskId) params.set('mailTaskId', mailTaskId);
     try {
-      const response = await fetch(`/api/overview${query}`, { cache: 'no-store' });
-      const data = await response.json() as Overview | { error?: { message?: string } };
-      if (!response.ok) throw new Error('error' in data ? data.error?.message : 'Could not load Relay.');
-      setOverview(data as Overview);
+      const response = await fetch(`/api/overview?${params}`, { cache: 'no-store' });
+      const data = await response.json() as Overview & { error?: { message?: string } };
+      if (!response.ok) throw new Error(data.error?.message ?? 'Could not load Relay.');
+      setOverview(data);
       setError(null);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Could not load Relay.');
     }
-  }, [campaignId]);
+  }, [eventId, mailTaskId]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { void load(); }, 0);
     return () => window.clearTimeout(timer);
   }, [load]);
-
-  useEffect(() => {
-    if (!overview?.myBatches.some((batch) => batch.status === 'SENDING')) return;
-    const timer = window.setInterval(() => { void load(); }, 2_000);
-    return () => window.clearInterval(timer);
-  }, [load, overview?.myBatches]);
-
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const params = new URLSearchParams(window.location.search);
@@ -47,38 +40,32 @@ export function RelayApp({ view, campaignId }: { view: AppView; campaignId?: str
     return () => window.clearTimeout(timer);
   }, []);
 
-  async function api<T>(url: string, init: RequestInit): Promise<T> {
-    const response = await fetch(url, {
-      ...init,
-      headers: { 'content-type': 'application/json', ...init.headers },
-    });
+  async function api<T>(url: string, init: RequestInit = {}): Promise<T> {
+    const response = await fetch(url, { ...init, headers: { 'content-type': 'application/json', ...init.headers } });
     const data = await response.json() as T & { error?: { message?: string } };
     if (!response.ok) throw new Error(data.error?.message ?? 'The request could not be completed.');
     return data;
   }
 
-  async function claim(batchIds: string[]) {
-    if (!overview?.campaign) return;
+  async function previewBatch(batchId: string) {
     setError(null);
     try {
-      await api('/api/batches/claim', {
-        method: 'POST',
-        body: JSON.stringify({ campaignId: overview.campaign.id, batchIds }),
-      });
-      router.push('/my-batches?claimed=1');
-    } catch (claimError) {
-      setError(claimError instanceof Error ? claimError.message : 'The batches could not be claimed.');
+      return await api<BatchPreview>(`/api/batches/preview?batchId=${encodeURIComponent(batchId)}`);
+    } catch (previewError) {
+      setError(previewError instanceof Error ? previewError.message : 'Could not open the preview.');
+      throw previewError;
     }
   }
 
-  async function assign(batchId: string, gmailAccountId: string) {
+  async function sendBatch(batchId: string, gmailAccountId: string) {
     setError(null);
     try {
-      await api('/api/batches/assign', { method: 'POST', body: JSON.stringify({ batchId, gmailAccountId }) });
-      setNotice('Gmail account assigned.');
+      await api('/api/sends', { method: 'POST', body: JSON.stringify({ batchId, gmailAccountId }) });
+      setNotice('One Gmail message was sent successfully with the full set in BCC.');
       await load();
-    } catch (assignmentError) {
-      setError(assignmentError instanceof Error ? assignmentError.message : 'Assignment failed.');
+    } catch (sendError) {
+      setError(sendError instanceof Error ? sendError.message : 'The set could not be sent.');
+      throw sendError;
     }
   }
 
@@ -93,100 +80,57 @@ export function RelayApp({ view, campaignId }: { view: AppView; campaignId?: str
     }
   }
 
-  async function send(batchIds: string[]) {
-    setError(null);
-    const results = await Promise.allSettled(
-      batchIds.map((batchId) => api('/api/sends', { method: 'POST', body: JSON.stringify({ batchId }) })),
-    );
-    await load();
-    const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
-    if (failed) {
-      const message = failed.reason instanceof Error ? failed.reason.message : 'A batch could not be sent.';
-      setError(message);
-      return;
-    }
-    setNotice(`${batchIds.length} ${batchIds.length === 1 ? 'batch' : 'batches'} sent successfully.`);
-  }
-
-  async function createCampaign(form: FormData) {
-    setError(null);
-    const response = await fetch('/api/campaigns', { method: 'POST', body: form });
-    const data = await response.json() as {
-      campaignId: string;
-      batches: number;
-      accepted: number;
-      sendable: number;
-      invalid: number;
-      duplicates: number;
-      suppressed: number;
-      error?: { message?: string };
-    };
+  async function createEvent(form: FormData) {
+    const response = await fetch('/api/events', { method: 'POST', body: form });
+    const data = await response.json() as { eventId: string; accepted: number; invalid: number; duplicates: number; error?: { message?: string } };
     if (!response.ok) {
       const message = data.error?.message ?? 'Event import failed.';
       setError(message);
       throw new Error(message);
     }
-    setNotice('Event created. Share its event-only link when you are ready.');
+    setNotice(`Event created with ${data.accepted} recipients. Add its first mail task now.`);
     await load();
     return data;
   }
 
+  async function createMailTask(input: { eventId: string; name: string; toEmail: string; subject: string; bodyText: string; batchSize: number }) {
+    const result = await api<{ mailTaskId: string; batches: number; batchSizes: number[] }>('/api/mail-tasks', { method: 'POST', body: JSON.stringify(input) });
+    setNotice(`Mail task created with ${result.batches} sets (${result.batchSizes.join(', ')}).`);
+    await load();
+    return result;
+  }
+
   async function addSuppression(email: string, reason: string) {
-    setError(null);
     try {
       await api('/api/suppressions', { method: 'POST', body: JSON.stringify({ email, reason }) });
-      setNotice(`${email} will be excluded from future sends.`);
+      setNotice(`${email} will be excluded from future mail tasks.`);
       await load();
-    } catch (suppressionError) {
-      setError(suppressionError instanceof Error ? suppressionError.message : 'Could not add the suppression.');
-    }
+    } catch (suppressionError) { setError(suppressionError instanceof Error ? suppressionError.message : 'Could not add suppression.'); }
   }
 
   async function removeSuppression(id: string) {
-    setError(null);
     try {
       await api('/api/suppressions', { method: 'DELETE', body: JSON.stringify({ id }) });
       setNotice('Suppression removed.');
       await load();
-    } catch (suppressionError) {
-      setError(suppressionError instanceof Error ? suppressionError.message : 'Could not remove the suppression.');
-    }
+    } catch (suppressionError) { setError(suppressionError instanceof Error ? suppressionError.message : 'Could not remove suppression.'); }
   }
 
-  async function createEventInvite(campaignId: string) {
-    setError(null);
+  async function createEventInvite(invitedEventId: string) {
     try {
-      const invite = await api<{
-        id: string;
-        campaignId: string;
-        campaignName: string;
-        url: string;
-        expiresAt: string;
-      }>('/api/campaigns/invite', {
-        method: 'POST',
-        body: JSON.stringify({ campaignId }),
-      });
-      setNotice('Event-only invitation link created.');
+      const invite = await api<{ id: string; eventId: string; eventName: string; url: string; expiresAt: string }>('/api/events/invite', { method: 'POST', body: JSON.stringify({ eventId: invitedEventId }) });
+      setNotice('Event-only invitation link created and copied.');
       await load();
       return invite;
-    } catch (inviteError) {
-      setError(inviteError instanceof Error ? inviteError.message : 'Could not create the invitation.');
-      throw inviteError;
-    }
+    } catch (inviteError) { setError(inviteError instanceof Error ? inviteError.message : 'Could not create invitation.'); throw inviteError; }
   }
 
   async function revokeEventInvite(inviteId: string) {
-    setError(null);
     try {
-      await api('/api/campaigns/invite', {
-        method: 'DELETE',
-        body: JSON.stringify({ inviteId }),
-      });
+      await api('/api/events/invite', { method: 'DELETE', body: JSON.stringify({ inviteId }) });
       setNotice('Event invitation revoked.');
       await load();
-    } catch (inviteError) {
-      setError(inviteError instanceof Error ? inviteError.message : 'Could not revoke the invitation.');
-    }
+    } catch (inviteError) { setError(inviteError instanceof Error ? inviteError.message : 'Could not revoke invitation.'); }
   }
 
   if (!overview && !error) return <RelayLoading />;
@@ -196,25 +140,21 @@ export function RelayApp({ view, campaignId }: { view: AppView; campaignId?: str
     <RelayShell overview={overview} activeView={view}>
       {notice ? <Toast tone="success" message={notice} onClose={() => setNotice(null)} /> : null}
       {error ? <Toast tone="error" message={error} onClose={() => setError(null)} /> : null}
-      {view === 'campaign' ? <BatchPicker overview={overview} onClaim={claim} /> : null}
-      {view === 'batches' ? <MyBatchesPanel overview={overview} onAssign={assign} onAddMockAccount={addMockAccount} onSend={send} /> : null}
-      {view === 'admin' ? <AdminPanel overview={overview} onCreateCampaign={createCampaign} onAddSuppression={addSuppression} onRemoveSuppression={removeSuppression} onCreateInvite={createEventInvite} onRevokeInvite={revokeEventInvite} /> : null}
+      {view === 'campaign' ? <BatchPicker overview={overview} onPreview={previewBatch} onSend={sendBatch} onAddMockAccount={addMockAccount} /> : null}
+      {view === 'batches' ? <MyBatchesPanel overview={overview} onAddMockAccount={addMockAccount} /> : null}
+      {view === 'admin' ? <AdminPanel overview={overview} onCreateEvent={createEvent} onCreateMailTask={createMailTask} onAddSuppression={addSuppression} onRemoveSuppression={removeSuppression} onCreateInvite={createEventInvite} onRevokeInvite={revokeEventInvite} /> : null}
     </RelayShell>
   );
 }
 
 function Toast({ tone, message, onClose }: { tone: 'success' | 'error'; message: string; onClose: () => void }) {
-  return (
-    <div role={tone === 'error' ? 'alert' : 'status'} className={`fixed right-4 top-20 z-50 flex max-w-sm items-start gap-3 rounded-2xl border px-4 py-3 text-sm shadow-lg ${tone === 'error' ? 'border-[#e5c8be] bg-[#fff8f5] text-[#8a4936]' : 'border-[#c9ddcf] bg-[#f5fbf7] text-[#315e43]'}`}>
-      <span aria-hidden="true">{tone === 'error' ? '!' : '✓'}</span><span className="leading-5">{message}</span><button onClick={onClose} className="ml-2 text-lg leading-4 opacity-60" aria-label="Dismiss">×</button>
-    </div>
-  );
+  return <div role={tone === 'error' ? 'alert' : 'status'} className={`fixed right-4 top-20 z-50 flex max-w-sm items-start gap-3 rounded-2xl border px-4 py-3 text-sm shadow-lg ${tone === 'error' ? 'border-[#e5c8be] bg-[#fff8f5] text-[#8a4936]' : 'border-[#c9ddcf] bg-[#f5fbf7] text-[#315e43]'}`}><span>{tone === 'error' ? '!' : '✓'}</span><span className="leading-5">{message}</span><button onClick={onClose} className="ml-2 text-lg leading-4 opacity-60" aria-label="Dismiss">×</button></div>;
 }
 
 function RelayLoading() {
-  return <div className="min-h-screen bg-[#f7f7f5] p-5 sm:p-10"><div className="mx-auto max-w-5xl animate-pulse"><div className="mb-10 h-10 w-36 rounded-xl bg-[#e3e3dd]" /><div className="h-8 w-80 max-w-full rounded-lg bg-[#e3e3dd]" /><div className="mt-4 h-4 w-[520px] max-w-full rounded bg-[#e9e9e4]" /><div className="mt-10 grid gap-3 sm:grid-cols-3">{[1, 2, 3].map((item) => <div key={item} className="h-28 rounded-2xl bg-white" />)}</div><div className="mt-6 h-80 rounded-[20px] bg-white" /></div></div>;
+  return <div className="min-h-screen bg-[#f7f7f5] p-10"><div className="mx-auto h-96 max-w-5xl animate-pulse rounded-3xl bg-white" /></div>;
 }
 
 function RelayFailure({ message, onRetry }: { message: string; onRetry: () => Promise<void> }) {
-  return <div className="grid min-h-screen place-items-center bg-[#f7f7f5] p-5"><div className="max-w-md rounded-[22px] border border-[#deded8] bg-white p-8 text-center"><span className="mx-auto grid h-11 w-11 place-items-center rounded-xl bg-[#fbefeb] text-[#98523b]">!</span><h1 className="mt-4 text-xl font-semibold">Relay could not open</h1><p className="mt-2 text-sm leading-6 text-[#77776f]">{message}</p><button onClick={() => void onRetry()} className="mt-5 h-10 rounded-xl bg-[#263d32] px-4 text-sm font-semibold text-white">Try again</button></div></div>;
+  return <div className="grid min-h-screen place-items-center bg-[#f7f7f5] p-5"><div className="max-w-md rounded-3xl border border-[#deded8] bg-white p-8 text-center"><h1 className="text-xl font-semibold">Relay could not open</h1><p className="mt-2 text-sm leading-6 text-[#77776f]">{message}</p><button onClick={() => void onRetry()} className="mt-5 h-10 rounded-xl bg-[#263d32] px-4 text-sm font-semibold text-white">Try again</button></div></div>;
 }
