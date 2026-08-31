@@ -8,8 +8,8 @@ function decodeRaw(value: string) {
 }
 
 describe('Gmail MIME construction', () => {
-  it('uses a stable message ID and folds a large Bcc header safely', () => {
-    const recipients = Array.from({ length: 300 }, (_, index) => `person${index}@example.com`);
+  it('uses a stable message ID and folds a 450-recipient Bcc header safely', () => {
+    const recipients = Array.from({ length: 450 }, (_, index) => `person${index}@example.com`);
     const raw = buildGmailMime({
       sender: 'sender@example.com',
       to: 'organizer@example.com',
@@ -24,9 +24,11 @@ describe('Gmail MIME construction', () => {
     expect(mime).toContain('Message-ID: <relay.batch-17@relay.internal>');
     expect(mime).toContain('To: organizer@example.com');
     expect(mime).toContain('Bcc: person0@example.com');
-    expect(mime).toContain('person299@example.com');
+    expect(mime).toContain('person449@example.com');
     const headerLines = mime.slice(0, mime.indexOf('\r\nSubject:')).split('\r\n').slice(2);
-    expect(headerLines.every((line) => line.length <= 76)).toBe(true);
+    expect(headerLines.every((line) => line.length <= 78)).toBe(true);
+    const unfoldedBcc = headerLines.join('\r\n').replace(/\r\n[ \t]+/g, ' ');
+    expect(unfoldedBcc).toBe(`Bcc: ${recipients.join(', ')}`);
     expect(mime).not.toContain('\nSubject: injected');
   });
 

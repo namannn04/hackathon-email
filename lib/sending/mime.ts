@@ -101,13 +101,21 @@ function encodeHeader(value: string): string {
 }
 
 function foldAddressHeader(name: string, addresses: string[]): string {
+  if (!addresses.length) return `${name}:`;
+
+  // Keep the comma attached to the address before a fold. A folded address
+  // list still needs a comma between every mailbox; dropping it at the line
+  // break makes Gmail reject larger lists as an "Invalid Bcc header".
+  const tokens = addresses.map((address, index) =>
+    `${address}${index < addresses.length - 1 ? ',' : ''}`,
+  );
   const lines: string[] = [];
-  let current = `${name}: `;
-  for (const [index, address] of addresses.entries()) {
-    const segment = `${index === 0 ? '' : ', '}${address}`;
-    if (current.length + segment.length > 76) {
+  let current = `${name}:`;
+  for (const token of tokens) {
+    const segment = ` ${token}`;
+    if (current !== `${name}:` && current.length + segment.length > 78) {
       lines.push(current);
-      current = ` ${address}`;
+      current = segment;
     } else {
       current += segment;
     }
