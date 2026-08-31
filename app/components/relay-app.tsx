@@ -104,6 +104,22 @@ export function RelayApp({ view, eventId, mailTaskId }: { view: AppView; eventId
     return data;
   }
 
+  async function deleteEvent(eventToDeleteId: string) {
+    setError(null);
+    try {
+      const result = await api<{ eventId: string; eventName: string }>('/api/events', {
+        method: 'DELETE',
+        body: JSON.stringify({ eventId: eventToDeleteId }),
+      });
+      setNotice(`${result.eventName} was deleted.`);
+      await load();
+      return result;
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'The event could not be deleted.');
+      throw deleteError;
+    }
+  }
+
   async function createMailTask(form: FormData) {
     // Sent as multipart so the optional inline images ride along with the fields.
     const response = await fetch('/api/mail-tasks', { method: 'POST', body: form });
@@ -160,7 +176,7 @@ export function RelayApp({ view, eventId, mailTaskId }: { view: AppView; eventId
       {error ? <Toast tone="error" message={error} onClose={() => setError(null)} /> : null}
       {view === 'campaign' ? <BatchPicker overview={overview} onPreview={previewBatch} onSend={sendBatch} onAddMockAccount={addMockAccount} /> : null}
       {view === 'batches' ? <MyBatchesPanel overview={overview} onAddMockAccount={addMockAccount} onDisconnectAccount={disconnectGmailAccount} /> : null}
-      {view === 'admin' ? <AdminPanel overview={overview} onCreateEvent={createEvent} onCreateMailTask={createMailTask} onAddSuppression={addSuppression} onRemoveSuppression={removeSuppression} onCreateInvite={createEventInvite} onRevokeInvite={revokeEventInvite} /> : null}
+      {view === 'admin' ? <AdminPanel overview={overview} onCreateEvent={createEvent} onDeleteEvent={deleteEvent} onCreateMailTask={createMailTask} onAddSuppression={addSuppression} onRemoveSuppression={removeSuppression} onCreateInvite={createEventInvite} onRevokeInvite={revokeEventInvite} /> : null}
     </RelayShell>
   );
 }

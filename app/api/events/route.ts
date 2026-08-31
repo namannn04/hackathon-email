@@ -1,5 +1,5 @@
 import { requireOrganizer } from '@/lib/auth/current-user';
-import { createEventWithRecipients } from '@/lib/events/manage';
+import { createEventWithRecipients, deleteEvent } from '@/lib/events/manage';
 import { assertTrustedMutation, HttpError, jsonError, readString } from '@/lib/http';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -15,6 +15,18 @@ export async function POST(request: NextRequest) {
       file,
     }, actor);
     return NextResponse.json(result, { status: 201 });
+  } catch (error) {
+    return jsonError(error);
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    assertTrustedMutation(request);
+    const actor = await requireOrganizer();
+    const body = (await request.json()) as { eventId?: unknown };
+    const result = await deleteEvent(readString(body.eventId, 'Event', 80), actor);
+    return NextResponse.json(result);
   } catch (error) {
     return jsonError(error);
   }

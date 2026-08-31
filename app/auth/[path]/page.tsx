@@ -3,6 +3,9 @@
 import { AuthView } from '@neondatabase/auth-ui';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
+import { useSyncExternalStore } from 'react';
+
+const subscribeToOrigin = () => () => undefined;
 
 export default function NeonAuthPage() {
   const params = useParams<{ path: string }>();
@@ -11,6 +14,10 @@ export default function NeonAuthPage() {
   const dashboardPath = requestedCallback?.startsWith('/') && !requestedCallback.startsWith('//')
     ? requestedCallback
     : '/dashboard';
+  const browserOrigin = useSyncExternalStore(subscribeToOrigin, () => window.location.origin, () => '');
+  // Resolve against the browser's real origin so production auth can never
+  // inherit a localhost callback from local environment configuration.
+  const callbackURL = browserOrigin ? new URL(dashboardPath, browserOrigin).toString() : dashboardPath;
 
   return (
     <main className="min-h-screen bg-[#f4f6f2] p-4 sm:p-6 lg:p-8">
@@ -46,7 +53,7 @@ export default function NeonAuthPage() {
               <span className="text-base font-semibold">Relay</span>
             </Link>
             <p className="mb-5 text-sm leading-6 text-[#6c746d]">After you continue, we’ll take you straight to your dashboard.</p>
-            <AuthView path={params.path} callbackURL={dashboardPath} redirectTo={dashboardPath} />
+            <AuthView path={params.path} callbackURL={callbackURL} redirectTo={callbackURL} />
             <p className="mt-6 text-center text-xs leading-5 text-[#8a918b]">By continuing, you agree to Relay’s <Link href="/terms" className="font-medium text-[#3d5e4d] underline underline-offset-4">terms</Link> and <Link href="/privacy" className="font-medium text-[#3d5e4d] underline underline-offset-4">privacy policy</Link>.</p>
           </div>
         </section>

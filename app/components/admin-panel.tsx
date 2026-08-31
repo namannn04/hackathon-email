@@ -6,9 +6,10 @@ import type { Overview } from './types';
 
 type EventResult = { eventId: string; accepted: number; invalid: number; duplicates: number };
 
-export function AdminPanel({ overview, onCreateEvent, onCreateMailTask, onAddSuppression, onRemoveSuppression, onCreateInvite, onRevokeInvite }: {
+export function AdminPanel({ overview, onCreateEvent, onDeleteEvent, onCreateMailTask, onAddSuppression, onRemoveSuppression, onCreateInvite, onRevokeInvite }: {
   overview: Overview;
   onCreateEvent: (form: FormData) => Promise<EventResult>;
+  onDeleteEvent: (eventId: string) => Promise<{ eventId: string; eventName: string }>;
   onCreateMailTask: (form: FormData) => Promise<unknown>;
   onAddSuppression: (email: string, reason: string) => Promise<void>;
   onRemoveSuppression: (id: string) => Promise<void>;
@@ -20,6 +21,8 @@ export function AdminPanel({ overview, onCreateEvent, onCreateMailTask, onAddSup
   const [result, setResult] = useState<EventResult | null>(null);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [activityTask, setActivityTask] = useState('all');
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteWorking, setDeleteWorking] = useState(false);
   const router = useRouter();
   const event = overview.event;
   const activities = useMemo(
@@ -42,6 +45,8 @@ export function AdminPanel({ overview, onCreateEvent, onCreateMailTask, onAddSup
       const value = await onCreateEvent(new FormData(e.currentTarget));
       setResult(value);
       e.currentTarget.reset();
+      router.push(`/admin?eventId=${encodeURIComponent(value.eventId)}`);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch { /* Parent displays the API error. */ } finally {
       setEventWorking(false);
     }
@@ -68,6 +73,25 @@ export function AdminPanel({ overview, onCreateEvent, onCreateMailTask, onAddSup
       setInviteUrl(invite.url);
       await navigator.clipboard?.writeText(invite.url).catch(() => undefined);
     } catch { /* Parent displays the API error. */ }
+  }
+
+  function openNewEventForm() {
+    document.getElementById('create-event')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    window.setTimeout(() => document.querySelector<HTMLInputElement>('#create-event input[name="name"]')?.focus(), 450);
+  }
+
+  async function deleteSelectedEvent() {
+    if (!event) return;
+    setDeleteWorking(true);
+    try {
+      await onDeleteEvent(event.id);
+      setDeleteOpen(false);
+      setInviteUrl(null);
+      router.replace('/admin');
+      router.refresh();
+    } catch { /* Parent displays the API error. */ } finally {
+      setDeleteWorking(false);
+    }
   }
 
   return (
@@ -100,6 +124,7 @@ export function AdminPanel({ overview, onCreateEvent, onCreateMailTask, onAddSup
               <div><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8a928b]">Event navigator</p><h2 className="mt-1 text-base font-semibold text-[#29352e]">Your events</h2></div>
               <span className="rounded-full bg-[#e9eeea] px-2.5 py-1 text-[11px] font-semibold text-[#5f6c63]">{overview.events.length}</span>
             </div>
+            <button type="button" onClick={openNewEventForm} className="mt-4 flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#203b2f] px-4 text-xs font-semibold text-white shadow-[0_8px_18px_rgba(32,59,47,.14)] transition hover:bg-[#294a3a]"><span className="text-base leading-none">+</span> New event</button>
             <div className="mt-4 space-y-2">
               {overview.events.length ? overview.events.map((item) => {
                 const selected = event?.id === item.id;
@@ -127,7 +152,10 @@ export function AdminPanel({ overview, onCreateEvent, onCreateMailTask, onAddSup
                     <div className="flex flex-wrap items-center gap-2"><h2 className="text-xl font-semibold tracking-[-0.025em] text-[#243229]">{event.name}</h2><StatusBadge status={event.status} /></div>
                     <p className="mt-2 text-sm text-[#737b74]">{formatNumber(event.recipientCount)} participants · {event.memberCount} members · {event.mailTasks.length} mail tasks</p>
                   </div>
-                  <button type="button" onClick={() => void createInvite()} className="inline-flex h-10 shrink-0 items-center justify-center rounded-xl bg-[#203b2f] px-4 text-xs font-semibold text-white shadow-[0_8px_18px_rgba(32,59,47,.18)] transition hover:bg-[#294a3a]">Create volunteer link</button>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    <button type="button" onClick={() => void createInvite()} className="inline-flex h-10 items-center justify-center rounded-xl bg-[#203b2f] px-4 text-xs font-semibold text-white shadow-[0_8px_18px_rgba(32,59,47,.18)] transition hover:bg-[#294a3a]">Create volunteer link</button>
+                    <button type="button" onClick={() => setDeleteOpen(true)} className="inline-flex h-10 items-center justify-center rounded-xl border border-[#ead6cf] bg-[#fffaf8] px-3.5 text-xs font-semibold text-[#9a513d] transition hover:bg-[#fff2ed]">Delete event</button>
+                  </div>
                 </div>
 
                 {inviteUrl ? (
@@ -162,8 +190,8 @@ export function AdminPanel({ overview, onCreateEvent, onCreateMailTask, onAddSup
 
       <div className="mb-3 flex items-end justify-between gap-4"><div><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#899089]">Campaign setup</p><h2 className="mt-1 text-xl font-semibold tracking-[-0.025em] text-[#26342b]">Create and prepare</h2></div><p className="hidden text-xs text-[#858d86] sm:block">Complete the steps from left to right</p></div>
       <div className="mb-6 grid items-start gap-5 xl:grid-cols-2">
-        <section className="rounded-[24px] border border-[#dce2dc] bg-white p-5 shadow-[0_10px_30px_rgba(31,48,39,.04)] sm:p-6">
-          <SectionHeading step="01" title="Create event" description="Import the participant list once. Every mail task will reuse it." />
+        <section id="create-event" className="scroll-mt-24 rounded-[24px] border border-[#dce2dc] bg-white p-5 shadow-[0_10px_30px_rgba(31,48,39,.04)] sm:p-6">
+          <SectionHeading step="01" title={overview.events.length ? 'Create another event' : 'Create event'} description="Import a new participant list. Existing events and their mail tasks stay unchanged." />
           <form onSubmit={submitEvent} className="mt-6 space-y-4">
             <Field label="Event name"><input name="name" required maxLength={120} className="field-input" placeholder="HackNova 2026" /></Field>
             <Field label="Participant list" hint="CSV or XLSX"><input name="file" required type="file" accept=".csv,.xlsx" className="file-input" /></Field>
@@ -209,6 +237,20 @@ export function AdminPanel({ overview, onCreateEvent, onCreateMailTask, onAddSup
       </section>
 
       <SuppressionSection overview={overview} onAdd={onAddSuppression} onRemove={onRemoveSuppression} />
+
+      {deleteOpen && event ? (
+        <div className="fixed inset-0 z-[70] grid place-items-center bg-[#15251d]/55 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget && !deleteWorking) setDeleteOpen(false); }}>
+          <section role="alertdialog" aria-modal="true" aria-labelledby="delete-event-title" aria-describedby="delete-event-description" className="w-full max-w-md rounded-[24px] border border-[#eadbd5] bg-white p-6 shadow-[0_24px_80px_rgba(24,36,29,.28)] sm:p-7">
+            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#fff0eb] text-sm font-bold text-[#a14f39]">!</span>
+            <h2 id="delete-event-title" className="mt-5 text-xl font-semibold tracking-[-0.025em] text-[#2d332f]">Delete {event.name}?</h2>
+            <p id="delete-event-description" className="mt-2 text-sm leading-6 text-[#737a74]">This permanently removes the event, participant list, mail tasks, recipient sets, activity, members, and invitation links. This action cannot be undone.</p>
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button type="button" disabled={deleteWorking} onClick={() => setDeleteOpen(false)} className="h-10 rounded-xl border border-[#d8ded9] px-4 text-sm font-semibold text-[#58635b] disabled:opacity-50">Cancel</button>
+              <button type="button" disabled={deleteWorking} onClick={() => void deleteSelectedEvent()} className="h-10 rounded-xl bg-[#a64f39] px-4 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(166,79,57,.2)] transition hover:bg-[#923f2c] disabled:cursor-not-allowed disabled:opacity-50">{deleteWorking ? 'Deleting event…' : 'Delete permanently'}</button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -73,3 +73,43 @@ export async function createEventWithRecipients(input: { name: string; file: Fil
     duplicates: parsed.duplicateCount,
   };
 }
+
+export async function deleteEvent(eventId: string, actor: User) {
+  const prisma = getPrisma();
+  const event = await prisma.event.findUnique({
+    where: { id: eventId },
+    select: {
+      id: true,
+      name: true,
+      _count: { select: { recipients: true, members: true, mailTasks: true } },
+    },
+  });
+  if (!event) throw new HttpError(404, 'Event not found.', 'EVENT_NOT_FOUND');
+
+  const sendingBatches = await prisma.batch.count({
+    where: { mailTask: { eventId }, status: 'SENDING' },
+  });
+  if (sendingBatches > 0) {
+    throw new HttpError(409, 'Wait for active sends to finish before deleting this event.', 'EVENT_SEND_ACTIVE');
+  }
+
+  await prisma.$transaction([
+    prisma.auditEvent.create({
+      data: {
+        actorId: actor.id,
+        action: 'EVENT_DELETED',
+        entityType: 'event',
+        entityId: event.id,
+        metadataJson: {
+          eventName: event.name,
+          recipients: event._count.recipients,
+          members: event._count.members,
+          mailTasks: event._count.mailTasks,
+        },
+      },
+    }),
+    prisma.event.delete({ where: { id: event.id } }),
+  ]);
+
+  return { eventId: event.id, eventName: event.name };
+}
