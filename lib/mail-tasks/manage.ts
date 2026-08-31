@@ -116,7 +116,7 @@ export function buildBodyHtml(
       const spacing = placement === 'below'
         ? `margin:${index === 0 ? '16px' : '0'} 0 16px`
         : 'margin:0 0 16px';
-      return `<img src="cid:${contentId}" alt="" style="display:block;max-width:100%;height:auto;${spacing}" />`;
+      return `<img src="cid:${contentId}" alt="" width="560" style="display:block;width:560px;max-width:100%;height:auto;${spacing}" />`;
     })
     .join('');
   const text = plainTextToHtml(bodyText);

@@ -6,6 +6,8 @@ describe('mail task HTML body', () => {
     const html = buildBodyHtml(undefined, 'Hello team', ['image1', 'image2']);
     expect(html.indexOf('cid:image1')).toBeLessThan(html.indexOf('cid:image2'));
     expect(html.indexOf('cid:image2')).toBeLessThan(html.indexOf('Hello team'));
+    expect(html).toContain('width="560"');
+    expect(html).toContain('width:560px;max-width:100%;height:auto');
   });
 
   it('stacks images below the text when asked', () => {
@@ -30,5 +32,12 @@ describe('mail task HTML body', () => {
     const html = buildBodyHtml(undefined, 'Hello team', [], 'below');
     expect(html).toContain('Hello team');
     expect(html).not.toContain('<img');
+  });
+
+  it('caps display width without changing the original image aspect ratio', () => {
+    const html = buildBodyHtml(undefined, 'Hello team', ['image1']);
+    expect(html).toContain('width="560"');
+    expect(html).toContain('height:auto');
+    expect(html).not.toMatch(/height="\d+"/);
   });
 });
