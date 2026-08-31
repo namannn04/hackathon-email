@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { BatchPreview, Overview } from './types';
 
 export function BatchPicker({ overview, onPreview, onSend, onAddMockAccount }: {
@@ -14,8 +14,15 @@ export function BatchPicker({ overview, onPreview, onSend, onAddMockAccount }: {
   const router = useRouter();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [preview, setPreview] = useState<BatchPreview | null>(null);
-  const [gmailAccountId, setGmailAccountId] = useState(overview.gmailAccounts[0]?.id ?? '');
+  const [gmailAccountId, setGmailAccountId] = useState(overview.gmailAccounts.find((account) => account.canSend)?.id ?? '');
   const [working, setWorking] = useState(false);
+  const sendableAccounts = useMemo(
+    () => overview.gmailAccounts.filter((account) => account.canSend),
+    [overview.gmailAccounts],
+  );
+  const selectedGmailAccountId = overview.gmailAccounts.some((account) => account.id === gmailAccountId && account.canSend)
+    ? gmailAccountId
+    : sendableAccounts[0]?.id ?? '';
 
   if (!overview.event) return <EmptyEvent isOrganizer={overview.user.role === 'ORGANIZER'} />;
   const task = overview.mailTask;
@@ -28,10 +35,10 @@ export function BatchPicker({ overview, onPreview, onSend, onAddMockAccount }: {
   }
 
   async function send() {
-    if (!preview || !gmailAccountId) return;
+    if (!preview || !selectedGmailAccountId) return;
     setWorking(true);
     try {
-      await onSend(preview.batchId, gmailAccountId);
+      await onSend(preview.batchId, selectedGmailAccountId);
       setPreview(null);
       setSelectedId(null);
     } catch { /* Parent displays the API error. */ } finally { setWorking(false); }
@@ -92,10 +99,11 @@ export function BatchPicker({ overview, onPreview, onSend, onAddMockAccount }: {
             <PreviewField label="To" value={preview.to} />
             <PreviewField label="Subject" value={preview.subject} />
             <label className="block text-xs font-medium text-[#66665f]">Send from
-              <select value={gmailAccountId} onChange={(e) => setGmailAccountId(e.target.value)} className="field-input mt-2">
-                <option value="">Choose Gmail</option>{overview.gmailAccounts.map((account) => <option key={account.id} value={account.id}>{account.email}</option>)}
+              <select value={selectedGmailAccountId} onChange={(e) => setGmailAccountId(e.target.value)} className="field-input mt-2">
+                <option value="">Choose a ready Gmail account</option>{overview.gmailAccounts.map((account) => <option key={account.id} value={account.id} disabled={!account.canSend}>{account.email}{account.canSend ? '' : ' — reconnect required'}</option>)}
               </select>
             </label>
+            {!sendableAccounts.length && overview.gmailAccounts.length ? <div role="alert" className="rounded-xl border border-[#ead8bb] bg-[#fff9ef] p-3 text-xs leading-5 text-[#7a5419]">None of the connected accounts currently has a valid Gmail send permission. Reconnect one before sending.</div> : null}
             {overview.mockTransport ? <button onClick={() => void onAddMockAccount()} className="w-full rounded-xl border border-[#d6d6cf] px-3 py-2 text-xs font-medium">Add test Gmail</button> : <a href={`/api/gmail/connect?returnTo=${encodeURIComponent(`/dashboard?eventId=${preview.eventId}&mailTaskId=${preview.mailTaskId}`)}`} className="block rounded-xl border border-[#d6d6cf] px-3 py-2 text-center text-xs font-medium">Connect another Gmail</a>}
           </div>
           <div className="space-y-4">
@@ -103,7 +111,7 @@ export function BatchPicker({ overview, onPreview, onSend, onAddMockAccount }: {
             <div><p className="mb-2 text-xs font-medium text-[#66665f]">Body</p><div className="max-h-72 overflow-auto whitespace-pre-wrap rounded-xl border border-[#e0e0da] p-4 text-sm leading-6">{preview.bodyText}</div></div>
           </div>
         </div>
-        <div className="mt-6 flex flex-col items-end gap-2 border-t border-[#ecece7] pt-5"><p className="text-xs text-[#77776f]">This sends one Gmail message, not {preview.bcc.length} separate messages.</p><button onClick={() => void send()} disabled={!gmailAccountId || working} className="h-11 rounded-xl bg-[#263d32] px-5 text-sm font-semibold text-white disabled:opacity-45">{working ? 'Sending one message…' : `Send 1 message to ${preview.bcc.length} BCC recipients`}</button></div>
+        <div className="mt-6 flex flex-col items-end gap-2 border-t border-[#ecece7] pt-5"><p className="text-xs text-[#77776f]">This sends one Gmail message, not {preview.bcc.length} separate messages.</p><button onClick={() => void send()} disabled={!selectedGmailAccountId || working} className="h-11 rounded-xl bg-[#263d32] px-5 text-sm font-semibold text-white disabled:opacity-45">{working ? 'Sending one message…' : `Send 1 message to ${preview.bcc.length} BCC recipients`}</button></div>
       </section> : null}
     </>
   );

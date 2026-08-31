@@ -19,7 +19,16 @@ export async function sendRawGmailMessage(input: { accountId: string; userId: st
   const init = { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ raw: input.raw }) };
   let response = await gmailFetch(url, await getAccessToken(input.accountId, input.userId), init);
   if (response.status === 401) response = await gmailFetch(url, await getAccessToken(input.accountId, input.userId, true), init);
-  if (!response.ok) throw await gmailError(response);
+  if (!response.ok) {
+    const error = await gmailError(response);
+    if (error.code === 'GMAIL_SCOPE_REQUIRED') {
+      await getPrisma().gmailAccount.updateMany({
+        where: { id: input.accountId, userId: input.userId },
+        data: { scopes: '' },
+      });
+    }
+    throw error;
+  }
   return (await response.json()) as { id: string; threadId: string };
 }
 
@@ -59,7 +68,16 @@ function gmailFetch(url: string | URL, accessToken: string, init: RequestInit = 
 
 async function gmailError(response: Response) {
   const body = (await response.json().catch(() => ({}))) as GmailErrorBody;
+  const message = body.error?.message ?? 'Gmail could not process the request.';
+  if (response.status === 403 && /insufficient authentication scopes/i.test(message)) {
+    return new GmailApiError(
+      'This Gmail connection is missing send permission. Reconnect it and approve “Send email on your behalf”.',
+      'GMAIL_SCOPE_REQUIRED',
+      false,
+      response.status,
+    );
+  }
   const code = body.error?.status ?? `HTTP_${response.status}`;
   const retryable = response.status === 408 || response.status === 429 || response.status >= 500 || ['RESOURCE_EXHAUSTED', 'UNAVAILABLE', 'INTERNAL'].includes(code);
-  return new GmailApiError(body.error?.message ?? 'Gmail could not process the request.', code, retryable, response.status);
+  return new GmailApiError(message, code, retryable, response.status);
 }

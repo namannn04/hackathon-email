@@ -3,6 +3,7 @@ import { writeAudit } from '@/lib/audit';
 import { getPrisma } from '@/lib/db/prisma';
 import { GmailApiError, sendRawGmailMessage } from '@/lib/gmail/client';
 import { usesMockTransport } from '@/lib/gmail/transport';
+import { gmailAccountHealth } from '@/lib/gmail/scopes';
 import { HttpError } from '@/lib/http';
 import { buildGmailMime } from './mime';
 
@@ -33,6 +34,10 @@ export async function sendBatch(batchId: string, gmailAccountId: string, user: U
     where: { id: gmailAccountId, userId: user.id, revokedAt: null },
   });
   if (!gmail) throw new HttpError(404, 'Connect and choose one of your Gmail accounts.', 'GMAIL_ACCOUNT_REQUIRED');
+  if (!usesMockTransport()) {
+    const health = gmailAccountHealth(gmail);
+    if (!health.canSend) throw new HttpError(409, health.message, 'GMAIL_RECONNECT_REQUIRED');
+  }
 
   const deterministicMessageId = `<relay.${batchId}@relay.internal>`;
   const send = await prisma.send.upsert({

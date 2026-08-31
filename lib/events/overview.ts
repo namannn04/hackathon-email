@@ -1,6 +1,7 @@
 import type { User } from '@/generated/prisma/client';
 import { getPrisma } from '@/lib/db/prisma';
 import { usesMockTransport } from '@/lib/gmail/transport';
+import { gmailAccountHealth } from '@/lib/gmail/scopes';
 
 export async function getOverview(user: User, requestedEventId?: string | null, requestedMailTaskId?: string | null) {
   const prisma = getPrisma();
@@ -73,7 +74,13 @@ export async function getOverview(user: User, requestedEventId?: string | null, 
     event,
     mailTask,
     availableBatches: mailTask?.batches.filter((batch) => batch.status === 'AVAILABLE' || batch.status === 'FAILED') ?? [],
-    gmailAccounts: gmailAccounts.map((account) => ({ id: account.id, email: account.email, displayName: account.displayName, tokenExpiresAt: account.tokenExpiresAt.toISOString() })),
+    gmailAccounts: gmailAccounts.map((account) => ({
+      id: account.id,
+      email: account.email,
+      displayName: account.displayName,
+      tokenExpiresAt: account.tokenExpiresAt.toISOString(),
+      ...gmailAccountHealth(account),
+    })),
     sentHistory: sentHistory.map((batch) => ({
       id: batch.id,
       number: batch.number,

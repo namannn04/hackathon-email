@@ -14,4 +14,8 @@ describe('remainder-aware batch planning', () => {
   it('never merges beyond Gmail\'s 500-recipient ceiling', () => {
     expect(planBatchSizes(548, 499)).toEqual([499, 49]);
   });
+
+  it('honors organizer-selected set sizes instead of hardcoding 300', () => {
+    expect(planBatchSizes(1_000, 450)).toEqual([450, 450, 100]);
+  });
 });

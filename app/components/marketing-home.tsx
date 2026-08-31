@@ -22,8 +22,8 @@ const guarantees = [
     body: 'Relay asks for gmail.send and basic identity scopes. It cannot read, search, modify, or delete anything in your mailbox.',
   },
   {
-    title: 'No double sends',
-    body: 'Idempotency keys, expiring send leases, and deterministic Message-IDs mean a retry never delivers the same set twice.',
+    title: 'Duplicate-send protection',
+    body: 'Idempotency keys, expiring send leases, and deterministic Message-IDs protect normal retries and concurrent clicks. Ambiguous provider failures stay visible for review.',
   },
   {
     title: 'Automatic record keeping',

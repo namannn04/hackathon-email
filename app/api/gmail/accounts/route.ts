@@ -4,6 +4,7 @@ import { decryptSecret } from '@/lib/crypto/secrets';
 import { getPrisma } from '@/lib/db/prisma';
 import { usesMockTransport } from '@/lib/gmail/transport';
 import { assertTrustedMutation, HttpError, jsonError, readString } from '@/lib/http';
+import { GMAIL_SEND_SCOPE } from '@/lib/gmail/scopes';
 import { NextResponse } from 'next/server';
 
 const GOOGLE_REVOKE_URL = 'https://oauth2.googleapis.com/revoke';
@@ -24,7 +25,7 @@ export async function POST(request: Request) {
         displayName: 'Demo Gmail',
         accessTokenCiphertext: 'mock',
         tokenExpiresAt: new Date(Date.now() + 86_400_000),
-        scopes: 'gmail.send gmail.readonly',
+        scopes: `openid email profile ${GMAIL_SEND_SCOPE}`,
       },
     });
     await writeAudit({ actorId: user.id, action: 'MOCK_GMAIL_ACCOUNT_CONNECTED', entityType: 'gmail_account', entityId: account.id, metadata: { email } });

@@ -54,7 +54,15 @@ export type Overview = {
   event: EventSummary | null;
   mailTask: MailTaskSummary | null;
   availableBatches: BatchSummary[];
-  gmailAccounts: Array<{ id: string; email: string; displayName: string | null; tokenExpiresAt: string }>;
+  gmailAccounts: Array<{
+    id: string;
+    email: string;
+    displayName: string | null;
+    tokenExpiresAt: string;
+    canSend: boolean;
+    status: 'READY' | 'RECONNECT';
+    message: string;
+  }>;
   sentHistory: Array<{
     id: string; number: number; recipientCount: number; sentCount: number; eventId: string;
     eventName: string; mailTaskId: string; mailTaskName: string; gmailEmail: string | null; sentAt: string;

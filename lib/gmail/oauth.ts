@@ -3,16 +3,17 @@ import { writeAudit } from '@/lib/audit';
 import { encryptSecret, toBase64Url } from '@/lib/crypto/secrets';
 import { getPrisma } from '@/lib/db/prisma';
 import { HttpError, safeReturnPath } from '@/lib/http';
+import { GMAIL_SEND_SCOPE, hasGmailSendScope } from './scopes';
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_TOKEN_INFO_URL = 'https://oauth2.googleapis.com/tokeninfo';
-const GOOGLE_SCOPES = ['openid', 'email', 'profile', 'https://www.googleapis.com/auth/gmail.send'];
+const GOOGLE_SCOPES = ['openid', 'email', 'profile', GMAIL_SEND_SCOPE];
 
 type GoogleTokenResponse = { access_token?: string; expires_in?: number; refresh_token?: string; scope?: string; id_token?: string; error_description?: string };
 type GoogleTokenInfo = { aud?: string; iss?: string; sub?: string; email?: string; email_verified?: string; name?: string; exp?: string };
 
-export async function createGoogleAuthorizationUrl(user: User, returnToValue: string | null) {
+export async function createGoogleAuthorizationUrl(user: User, returnToValue: string | null, loginHint?: string | null) {
   const config = googleConfig();
   const state = toBase64Url(crypto.getRandomValues(new Uint8Array(32)));
   const codeVerifier = toBase64Url(crypto.getRandomValues(new Uint8Array(64)));
@@ -37,7 +38,17 @@ export async function createGoogleAuthorizationUrl(user: User, returnToValue: st
   url.searchParams.set('state', state);
   url.searchParams.set('code_challenge', codeChallenge);
   url.searchParams.set('code_challenge_method', 'S256');
+  if (loginHint) url.searchParams.set('login_hint', loginHint);
   return url.toString();
+}
+
+export async function getGoogleAuthorizationReturnPath(state: string | null, authenticatedUserId: string) {
+  if (!state) return '/my-batches';
+  const stored = await getPrisma().oAuthState.findFirst({
+    where: { state, userId: authenticatedUserId },
+    select: { returnTo: true },
+  });
+  return safeReturnPath(stored?.returnTo ?? null);
 }
 
 export async function completeGoogleAuthorization(input: { code: string; state: string; authenticatedUserId: string }) {
@@ -65,6 +76,14 @@ export async function completeGoogleAuthorization(input: { code: string; state: 
   if (!tokenResponse.ok || !tokens.access_token || !tokens.id_token || !tokens.expires_in) {
     throw new HttpError(400, tokens.error_description ?? 'Google did not complete the connection.', 'GOOGLE_TOKEN_EXCHANGE_FAILED');
   }
+  const grantedScopes = tokens.scope ?? '';
+  if (!hasGmailSendScope(grantedScopes)) {
+    throw new HttpError(
+      409,
+      'Gmail send permission was not granted. Connect again and approve “Send email on your behalf”.',
+      'GMAIL_SCOPE_REQUIRED',
+    );
+  }
   const infoResponse = await fetch(`${GOOGLE_TOKEN_INFO_URL}?id_token=${encodeURIComponent(tokens.id_token)}`);
   const info = (await infoResponse.json()) as GoogleTokenInfo;
   const validIssuer = info.iss === 'https://accounts.google.com' || info.iss === 'accounts.google.com';
@@ -82,7 +101,7 @@ export async function completeGoogleAuthorization(input: { code: string; state: 
       accessTokenCiphertext: await encryptSecret(tokens.access_token),
       refreshTokenCiphertext: tokens.refresh_token ? await encryptSecret(tokens.refresh_token) : null,
       tokenExpiresAt: new Date(Date.now() + tokens.expires_in * 1000),
-      scopes: tokens.scope ?? GOOGLE_SCOPES.join(' '),
+      scopes: grantedScopes,
     },
     update: {
       email: info.email.toLowerCase(),
@@ -90,7 +109,7 @@ export async function completeGoogleAuthorization(input: { code: string; state: 
       accessTokenCiphertext: await encryptSecret(tokens.access_token),
       ...(tokens.refresh_token ? { refreshTokenCiphertext: await encryptSecret(tokens.refresh_token) } : {}),
       tokenExpiresAt: new Date(Date.now() + tokens.expires_in * 1000),
-      scopes: tokens.scope ?? GOOGLE_SCOPES.join(' '),
+      scopes: grantedScopes,
       revokedAt: null,
     },
   });

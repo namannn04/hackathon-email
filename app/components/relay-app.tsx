@@ -18,6 +18,10 @@ export function RelayApp({ view, eventId, mailTaskId }: { view: AppView; eventId
     if (mailTaskId) params.set('mailTaskId', mailTaskId);
     try {
       const response = await fetch(`/api/overview?${params}`, { cache: 'no-store' });
+      if (response.status === 401) {
+        redirectToSignIn();
+        return;
+      }
       const data = await response.json() as Overview & { error?: { message?: string } };
       if (!response.ok) throw new Error(data.error?.message ?? 'Could not load Relay.');
       setOverview(data);
@@ -36,12 +40,24 @@ export function RelayApp({ view, eventId, mailTaskId }: { view: AppView; eventId
       const params = new URLSearchParams(window.location.search);
       if (params.get('gmail') === 'connected') setNotice('Gmail account connected securely.');
       if (params.get('gmail') === 'error') setError(params.get('message') ?? 'Gmail connection failed.');
+      if (params.get('joined') === '1') setNotice('Invitation accepted. This event is now available in your dashboard.');
+      if (params.has('gmail') || params.has('message') || params.has('joined')) {
+        params.delete('gmail');
+        params.delete('message');
+        params.delete('joined');
+        const query = params.toString();
+        window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
+      }
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
 
   async function api<T>(url: string, init: RequestInit = {}): Promise<T> {
     const response = await fetch(url, { ...init, headers: { 'content-type': 'application/json', ...init.headers } });
+    if (response.status === 401) {
+      redirectToSignIn();
+      throw new Error('Your session expired. Redirecting to sign in…');
+    }
     const data = await response.json() as T & { error?: { message?: string } };
     if (!response.ok) throw new Error(data.error?.message ?? 'The request could not be completed.');
     return data;
@@ -65,6 +81,7 @@ export function RelayApp({ view, eventId, mailTaskId }: { view: AppView; eventId
       await load();
     } catch (sendError) {
       setError(sendError instanceof Error ? sendError.message : 'The set could not be sent.');
+      await load();
       throw sendError;
     }
   }
@@ -92,7 +109,12 @@ export function RelayApp({ view, eventId, mailTaskId }: { view: AppView; eventId
   }
 
   async function createEvent(form: FormData) {
+    setError(null);
     const response = await fetch('/api/events', { method: 'POST', body: form });
+    if (response.status === 401) {
+      redirectToSignIn();
+      throw new Error('Your session expired. Redirecting to sign in…');
+    }
     const data = await response.json() as { eventId: string; accepted: number; invalid: number; duplicates: number; error?: { message?: string } };
     if (!response.ok) {
       const message = data.error?.message ?? 'Event import failed.';
@@ -122,7 +144,12 @@ export function RelayApp({ view, eventId, mailTaskId }: { view: AppView; eventId
 
   async function createMailTask(form: FormData) {
     // Sent as multipart so the optional inline images ride along with the fields.
+    setError(null);
     const response = await fetch('/api/mail-tasks', { method: 'POST', body: form });
+    if (response.status === 401) {
+      redirectToSignIn();
+      throw new Error('Your session expired. Redirecting to sign in…');
+    }
     const data = await response.json() as { mailTaskId: string; batches: number; batchSizes: number[]; error?: { message?: string } };
     if (!response.ok) {
       const message = data.error?.message ?? 'The mail task could not be created.';
@@ -139,7 +166,10 @@ export function RelayApp({ view, eventId, mailTaskId }: { view: AppView; eventId
       await api('/api/suppressions', { method: 'POST', body: JSON.stringify({ email, reason }) });
       setNotice(`${email} will be excluded from future mail tasks.`);
       await load();
-    } catch (suppressionError) { setError(suppressionError instanceof Error ? suppressionError.message : 'Could not add suppression.'); }
+    } catch (suppressionError) {
+      setError(suppressionError instanceof Error ? suppressionError.message : 'Could not add suppression.');
+      throw suppressionError;
+    }
   }
 
   async function removeSuppression(id: string) {
@@ -147,7 +177,10 @@ export function RelayApp({ view, eventId, mailTaskId }: { view: AppView; eventId
       await api('/api/suppressions', { method: 'DELETE', body: JSON.stringify({ id }) });
       setNotice('Suppression removed.');
       await load();
-    } catch (suppressionError) { setError(suppressionError instanceof Error ? suppressionError.message : 'Could not remove suppression.'); }
+    } catch (suppressionError) {
+      setError(suppressionError instanceof Error ? suppressionError.message : 'Could not remove suppression.');
+      throw suppressionError;
+    }
   }
 
   async function createEventInvite(invitedEventId: string) {
@@ -164,7 +197,10 @@ export function RelayApp({ view, eventId, mailTaskId }: { view: AppView; eventId
       await api('/api/events/invite', { method: 'DELETE', body: JSON.stringify({ inviteId }) });
       setNotice('Event invitation revoked.');
       await load();
-    } catch (inviteError) { setError(inviteError instanceof Error ? inviteError.message : 'Could not revoke invitation.'); }
+    } catch (inviteError) {
+      setError(inviteError instanceof Error ? inviteError.message : 'Could not revoke invitation.');
+      throw inviteError;
+    }
   }
 
   if (!overview && !error) return <RelayLoading />;
@@ -179,6 +215,11 @@ export function RelayApp({ view, eventId, mailTaskId }: { view: AppView; eventId
       {view === 'admin' ? <AdminPanel overview={overview} onCreateEvent={createEvent} onDeleteEvent={deleteEvent} onCreateMailTask={createMailTask} onAddSuppression={addSuppression} onRemoveSuppression={removeSuppression} onCreateInvite={createEventInvite} onRevokeInvite={revokeEventInvite} /> : null}
     </RelayShell>
   );
+}
+
+function redirectToSignIn() {
+  const returnTo = `${window.location.pathname}${window.location.search}`;
+  window.location.replace(`/auth/sign-in?redirectTo=${encodeURIComponent(returnTo)}`);
 }
 
 function Toast({ tone, message, onClose }: { tone: 'success' | 'error'; message: string; onClose: () => void }) {

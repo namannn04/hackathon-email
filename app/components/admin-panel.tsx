@@ -23,6 +23,8 @@ export function AdminPanel({ overview, onCreateEvent, onDeleteEvent, onCreateMai
   const [activityTask, setActivityTask] = useState('all');
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteWorking, setDeleteWorking] = useState(false);
+  const [inviteWorking, setInviteWorking] = useState(false);
+  const [revokingInviteId, setRevokingInviteId] = useState<string | null>(null);
   const router = useRouter();
   const event = overview.event;
   const activities = useMemo(
@@ -68,11 +70,24 @@ export function AdminPanel({ overview, onCreateEvent, onDeleteEvent, onCreateMai
 
   async function createInvite() {
     if (!event) return;
+    setInviteWorking(true);
     try {
       const invite = await onCreateInvite(event.id);
       setInviteUrl(invite.url);
       await navigator.clipboard?.writeText(invite.url).catch(() => undefined);
-    } catch { /* Parent displays the API error. */ }
+    } catch { /* Parent displays the API error. */ } finally {
+      setInviteWorking(false);
+    }
+  }
+
+  async function revokeInvite(inviteId: string) {
+    if (!window.confirm('Revoke this volunteer link? Anyone who has not joined yet will no longer be able to use it.')) return;
+    setRevokingInviteId(inviteId);
+    try {
+      await onRevokeInvite(inviteId);
+    } catch { /* Parent displays the API error. */ } finally {
+      setRevokingInviteId(null);
+    }
   }
 
   function openNewEventForm() {
@@ -153,7 +168,7 @@ export function AdminPanel({ overview, onCreateEvent, onDeleteEvent, onCreateMai
                     <p className="mt-2 text-sm text-[#737b74]">{formatNumber(event.recipientCount)} participants · {event.memberCount} members · {event.mailTasks.length} mail tasks</p>
                   </div>
                   <div className="flex shrink-0 flex-wrap gap-2">
-                    <button type="button" onClick={() => void createInvite()} className="inline-flex h-10 items-center justify-center rounded-xl bg-[#203b2f] px-4 text-xs font-semibold text-white shadow-[0_8px_18px_rgba(32,59,47,.18)] transition hover:bg-[#294a3a]">Create volunteer link</button>
+                    <button type="button" disabled={inviteWorking} onClick={() => void createInvite()} className="inline-flex h-10 items-center justify-center rounded-xl bg-[#203b2f] px-4 text-xs font-semibold text-white shadow-[0_8px_18px_rgba(32,59,47,.18)] transition hover:bg-[#294a3a] disabled:cursor-not-allowed disabled:opacity-50">{inviteWorking ? 'Creating link…' : 'Create volunteer link'}</button>
                     <button type="button" onClick={() => setDeleteOpen(true)} className="inline-flex h-10 items-center justify-center rounded-xl border border-[#ead6cf] bg-[#fffaf8] px-3.5 text-xs font-semibold text-[#9a513d] transition hover:bg-[#fff2ed]">Delete event</button>
                   </div>
                 </div>
@@ -180,7 +195,7 @@ export function AdminPanel({ overview, onCreateEvent, onDeleteEvent, onCreateMai
                 </div>
 
                 {overview.invites.some((invite) => invite.eventId === event.id) ? (
-                  <div className="mt-5 border-t border-[#edf0ed] pt-4"><p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8c938d]">Active volunteer links</p><div className="flex flex-wrap gap-2">{overview.invites.filter((invite) => invite.eventId === event.id).map((invite) => <button type="button" key={invite.id} onClick={() => void onRevokeInvite(invite.id)} className="rounded-xl border border-[#ead7d0] bg-[#fffaf8] px-3 py-2 text-xs font-medium text-[#9a5944] transition hover:bg-[#fff4ef]">Revoke · expires {new Date(invite.expiresAt).toLocaleDateString()}</button>)}</div></div>
+                  <div className="mt-5 border-t border-[#edf0ed] pt-4"><p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8c938d]">Active volunteer links</p><div className="flex flex-wrap gap-2">{overview.invites.filter((invite) => invite.eventId === event.id).map((invite) => <button type="button" key={invite.id} disabled={revokingInviteId === invite.id} onClick={() => void revokeInvite(invite.id)} className="rounded-xl border border-[#ead7d0] bg-[#fffaf8] px-3 py-2 text-xs font-medium text-[#9a5944] transition hover:bg-[#fff4ef] disabled:cursor-not-allowed disabled:opacity-50">{revokingInviteId === invite.id ? 'Revoking…' : `Revoke · expires ${new Date(invite.expiresAt).toLocaleDateString()}`}</button>)}</div></div>
                 ) : null}
               </>
             ) : <div className="grid h-full min-h-72 place-items-center"><EmptyState title="Select an event" body="Choose an event on the left to see its mail tasks, progress, members, and volunteer links." /></div>}
@@ -256,18 +271,35 @@ export function AdminPanel({ overview, onCreateEvent, onDeleteEvent, onCreateMai
 }
 
 function SuppressionSection({ overview, onAdd, onRemove }: { overview: Overview; onAdd: (email: string, reason: string) => Promise<void>; onRemove: (id: string) => Promise<void> }) {
+  const [adding, setAdding] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
-    await onAdd(String(form.get('email')), String(form.get('reason')));
-    e.currentTarget.reset();
+    setAdding(true);
+    try {
+      await onAdd(String(form.get('email')), String(form.get('reason')));
+      e.currentTarget.reset();
+    } catch { /* Parent displays the API error and preserves the form. */ } finally {
+      setAdding(false);
+    }
+  }
+
+  async function remove(id: string) {
+    setRemovingId(id);
+    try {
+      await onRemove(id);
+    } catch { /* Parent displays the API error. */ } finally {
+      setRemovingId(null);
+    }
   }
 
   return (
     <section className="rounded-[24px] border border-[#dce2dc] bg-white p-5 shadow-[0_10px_30px_rgba(31,48,39,.04)] sm:p-6">
       <div className="flex items-start justify-between gap-4"><div><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#899089]">Safety controls</p><h2 className="mt-1 text-base font-semibold text-[#29372f]">Suppression list</h2><p className="mt-1 text-xs leading-5 text-[#7a827b]">Excluded addresses are left out of future mail tasks.</p></div><span className="rounded-full bg-[#f0f2f0] px-2.5 py-1 text-[11px] font-semibold text-[#69716a]">{overview.suppressions.length}</span></div>
-      <form onSubmit={submit} className="mt-5 grid gap-3 sm:grid-cols-[minmax(190px,1fr)_minmax(220px,1.4fr)_auto]"><input aria-label="Email to suppress" name="email" required type="email" className="field-input" placeholder="person@example.com" /><input aria-label="Suppression reason" name="reason" required className="field-input" placeholder="Reason for exclusion" /><button className="h-11 rounded-xl border border-[#ccd5ce] bg-[#f9faf9] px-5 text-sm font-semibold text-[#405246] transition hover:bg-[#f0f4f1]">Add address</button></form>
-      {overview.suppressions.length ? <div className="mt-5 divide-y divide-[#edf0ed] border-t border-[#edf0ed]">{overview.suppressions.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 py-3.5"><div className="min-w-0"><p className="truncate text-sm font-medium text-[#313d35]">{item.email}</p><p className="mt-0.5 truncate text-xs text-[#7c847d]">{item.reason}</p></div><button type="button" onClick={() => void onRemove(item.id)} className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium text-[#9a5944] transition hover:bg-[#fff3ef]">Remove</button></div>)}</div> : <p className="mt-5 rounded-2xl bg-[#fafbfa] p-4 text-center text-xs text-[#858d86]">No suppressed addresses.</p>}
+      <form onSubmit={submit} className="mt-5 grid gap-3 sm:grid-cols-[minmax(190px,1fr)_minmax(220px,1.4fr)_auto]"><input aria-label="Email to suppress" name="email" required type="email" disabled={adding} className="field-input" placeholder="person@example.com" /><input aria-label="Suppression reason" name="reason" required disabled={adding} className="field-input" placeholder="Reason for exclusion" /><button disabled={adding} className="h-11 rounded-xl border border-[#ccd5ce] bg-[#f9faf9] px-5 text-sm font-semibold text-[#405246] transition hover:bg-[#f0f4f1] disabled:cursor-not-allowed disabled:opacity-50">{adding ? 'Adding…' : 'Add address'}</button></form>
+      {overview.suppressions.length ? <div className="mt-5 divide-y divide-[#edf0ed] border-t border-[#edf0ed]">{overview.suppressions.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 py-3.5"><div className="min-w-0"><p className="truncate text-sm font-medium text-[#313d35]">{item.email}</p><p className="mt-0.5 truncate text-xs text-[#7c847d]">{item.reason}</p></div><button type="button" disabled={removingId === item.id} onClick={() => void remove(item.id)} className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium text-[#9a5944] transition hover:bg-[#fff3ef] disabled:cursor-not-allowed disabled:opacity-50">{removingId === item.id ? 'Removing…' : 'Remove'}</button></div>)}</div> : <p className="mt-5 rounded-2xl bg-[#fafbfa] p-4 text-center text-xs text-[#858d86]">No suppressed addresses.</p>}
     </section>
   );
 }

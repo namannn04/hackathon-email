@@ -126,8 +126,8 @@ export default function PrivacyPolicyPage() {
         <p>
           Traffic is served over HTTPS. Google OAuth tokens are encrypted with an application key before storage, and
           the OAuth flow uses PKCE with single-use, expiring state values. Invitation links are stored only as hashes.
-          Sends are protected by idempotency keys, expiring leases, and deterministic message identifiers so that a
-          retry cannot deliver the same set twice.
+          Sends use idempotency keys, expiring leases, and deterministic message identifiers to protect normal retries
+          and concurrent clicks. Ambiguous provider or network failures remain visible for review before retrying.
         </p>
         <p>
           No system is perfectly secure. If you believe an account or list has been exposed, contact us at{' '}
