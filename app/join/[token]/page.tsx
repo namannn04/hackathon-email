@@ -9,7 +9,10 @@ export const dynamic = 'force-dynamic';
 export default async function JoinEventPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const { data: session } = isNeonAuthConfigured() ? await getNeonAuth().getSession() : { data: null };
-  if (!session?.user) return <InviteSignIn token={token} />;
+  if (!session?.user) {
+    const returnTo = `/join/${encodeURIComponent(token)}`;
+    redirect(`/auth/sign-in?redirectTo=${encodeURIComponent(returnTo)}`);
+  }
 
   const user = await requireAppUser();
   let eventId: string;
@@ -25,17 +28,6 @@ export default async function JoinEventPage({ params }: { params: Promise<{ toke
     );
   }
   redirect(`/dashboard?eventId=${eventId}&joined=1`);
-}
-
-function InviteSignIn({ token }: { token: string }) {
-  const returnTo = `/join/${encodeURIComponent(token)}`;
-  return (
-    <InviteCard
-      title="You’ve been invited to an event"
-      message="Sign in once to join this event. Relay creates your volunteer account automatically—there is no separate signup form."
-      action={<a href={`/auth/sign-in?callbackURL=${encodeURIComponent(returnTo)}`} className="inline-flex h-11 items-center rounded-xl bg-[#263d32] px-5 text-sm font-semibold text-white">Sign in and join event</a>}
-    />
-  );
 }
 
 function InviteCard({ title, message, action }: { title: string; message: string; action?: React.ReactNode }) {

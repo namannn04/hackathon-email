@@ -1,12 +1,11 @@
 'use client';
 
 import { authClient } from '@/lib/auth/client';
-import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 export function SignOutButton({ className }: { className?: string }) {
   const [working, setWorking] = useState(false);
-  const router = useRouter();
+  const [failed, setFailed] = useState(false);
   return (
     <button
       type="button"
@@ -14,12 +13,20 @@ export function SignOutButton({ className }: { className?: string }) {
       className={className}
       onClick={async () => {
         setWorking(true);
-        await authClient.signOut();
-        router.push('/auth/sign-in');
-        router.refresh();
+        setFailed(false);
+        try {
+          const result = await authClient.signOut();
+          if (result.error) throw new Error(result.error.message ?? 'Sign out failed.');
+          // A full navigation guarantees that no authenticated server-rendered
+          // page or client router cache survives into the next account session.
+          window.location.replace('/auth/sign-in?loggedOut=1');
+        } catch {
+          setFailed(true);
+          setWorking(false);
+        }
       }}
     >
-      {working ? 'Signing out…' : 'Sign out'}
+      {working ? 'Signing out…' : failed ? 'Sign out failed — retry' : 'Sign out'}
     </button>
   );
 }

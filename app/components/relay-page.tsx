@@ -4,11 +4,18 @@ import { RelayApp } from './relay-app';
 import { MarketingHome } from './marketing-home';
 import type { AppView } from './types';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 
 export async function RelayPage({ view, eventId, mailTaskId, publicLanding = false }: { view: AppView; eventId?: string | null; mailTaskId?: string | null; publicLanding?: boolean }) {
   if (!isNeonAuthConfigured() || !isDatabaseConfigured()) return <SetupScreen />;
   const { data: session } = await getNeonAuth().getSession();
   if (!session?.user) return publicLanding ? <MarketingHome /> : <SignInScreen />;
+  if (publicLanding) {
+    const params = new URLSearchParams();
+    if (eventId) params.set('eventId', eventId);
+    if (mailTaskId) params.set('mailTaskId', mailTaskId);
+    redirect(`/dashboard${params.size ? `?${params}` : ''}`);
+  }
   return <RelayApp view={view} eventId={eventId} mailTaskId={mailTaskId} />;
 }
 
