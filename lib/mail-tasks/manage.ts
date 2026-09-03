@@ -110,6 +110,78 @@ export async function createMailTask(input: {
   return { mailTaskId: task.id, eventId: event.id, batches: sizes.length, batchSizes: sizes, htmlWarnings: body.warnings };
 }
 
+/**
+ * Removes a mail task and everything that hangs off it: its recipient sets,
+ * their delivery rows and send records, its inline images and its activity.
+ *
+ * A task that has already sent is still removable — the same rule the event
+ * delete follows — but an in-flight send is not interrupted, and the audit
+ * record keeps what was destroyed, including how many recipients had already
+ * received it. Suppressions are untouched: an unsubscribe outlives the task
+ * that prompted it.
+ */
+export async function deleteMailTask(mailTaskId: string, actor: User) {
+  const prisma = getPrisma();
+  const task = await prisma.mailTask.findUnique({
+    where: { id: mailTaskId },
+    select: {
+      id: true,
+      name: true,
+      eventId: true,
+      event: { select: { name: true } },
+      _count: { select: { batches: true, deliveries: true } },
+    },
+  });
+  if (!task) throw new HttpError(404, 'Mail task not found.', 'MAIL_TASK_NOT_FOUND');
+
+  const sending = await prisma.batch.count({ where: { mailTaskId, status: 'SENDING' } });
+  if (sending > 0) {
+    throw new HttpError(409, 'Wait for the active send to finish before deleting this mail task.', 'MAIL_TASK_SEND_ACTIVE');
+  }
+
+  const sentRecipients = await prisma.mailTaskRecipient.count({ where: { mailTaskId, status: 'SENT' } });
+  const sentBatches = await prisma.batch.count({ where: { mailTaskId, status: 'SENT' } });
+
+  await prisma.$transaction([
+    prisma.auditEvent.create({
+      data: {
+        actorId: actor.id,
+        action: 'MAIL_TASK_DELETED',
+        entityType: 'mail_task',
+        entityId: task.id,
+        metadataJson: {
+          mailTaskName: task.name,
+          eventId: task.eventId,
+          eventName: task.event.name,
+          batches: task._count.batches,
+          recipients: task._count.deliveries,
+          sentBatches,
+          sentRecipients,
+        },
+      },
+    }),
+    prisma.activityEvent.create({
+      data: {
+        eventId: task.eventId,
+        actorId: actor.id,
+        action: 'MAIL_TASK_DELETED',
+        status: 'INFO',
+        emailCount: sentRecipients,
+        detail: `${actor.name ?? actor.email} deleted mail task "${task.name}" (${sentBatches} of ${task._count.batches} sets had been sent)`,
+      },
+    }),
+    prisma.mailTask.delete({ where: { id: task.id } }),
+  ]);
+
+  return {
+    mailTaskId: task.id,
+    mailTaskName: task.name,
+    eventId: task.eventId,
+    sentBatches,
+    sentRecipients,
+  };
+}
+
 /** A url-safe id in the shape the schema's own default produces. */
 function createId(): string {
   return `mt${crypto.randomUUID().replaceAll('-', '')}`;

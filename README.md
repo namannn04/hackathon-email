@@ -37,6 +37,14 @@ Submitting neither is the only rejected case.
 
 Pasting a complete HTML document is fine — `<!doctype>`, `<head>`, `<meta>`, `<title>` and `<body>` are handled and only the body content is kept.
 
+### Deleting a mail task
+
+Each mail task card in the admin portal has a delete control. It removes the message, its recipient sets, their delivery and send records, its inline images, and the task's activity; the event and its participant list are untouched.
+
+- An in-flight send blocks the delete, the same rule the event delete follows.
+- A task that has already sent is still removable, and the dialog says plainly that deleting it does not unsend anything. What was destroyed — including how many recipients had already received it — is kept in the audit trail and on the event's activity board.
+- Suppressions survive: an unsubscribe outlives the task that prompted it.
+
 ### Unsubscribes
 
 Every message carries a `List-Unsubscribe` header and a visible unsubscribe link, because both are what mailbox providers expect from bulk mail.

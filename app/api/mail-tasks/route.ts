@@ -7,7 +7,7 @@ import {
   readOptionalText,
   readPlacement,
 } from '@/lib/mail-tasks/form';
-import { createMailTask } from '@/lib/mail-tasks/manage';
+import { createMailTask, deleteMailTask } from '@/lib/mail-tasks/manage';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
@@ -42,6 +42,17 @@ export async function POST(request: NextRequest) {
       origin: process.env.SITE_ORIGIN ?? request.nextUrl.origin,
     }, actor);
     return NextResponse.json(result, { status: 201 });
+  } catch (error) {
+    return jsonError(error);
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    assertTrustedMutation(request);
+    const actor = await requireOrganizer();
+    const body = (await request.json()) as { mailTaskId?: unknown };
+    return NextResponse.json(await deleteMailTask(readString(body.mailTaskId, 'Mail task', 80), actor));
   } catch (error) {
     return jsonError(error);
   }

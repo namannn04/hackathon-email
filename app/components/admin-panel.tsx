@@ -3,16 +3,17 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { MailBodyComposer, type TestSendResult } from './mail-body-composer';
-import type { Overview } from './types';
+import type { MailTaskSummary, Overview } from './types';
 
 type EventResult = { eventId: string; accepted: number; invalid: number; duplicates: number };
 
-export function AdminPanel({ overview, onCreateEvent, onDeleteEvent, onCreateMailTask, onSendTestMail, onAddSuppression, onRemoveSuppression, onCreateInvite, onRevokeInvite }: {
+export function AdminPanel({ overview, onCreateEvent, onDeleteEvent, onCreateMailTask, onSendTestMail, onDeleteMailTask, onAddSuppression, onRemoveSuppression, onCreateInvite, onRevokeInvite }: {
   overview: Overview;
   onCreateEvent: (form: FormData) => Promise<EventResult>;
   onDeleteEvent: (eventId: string) => Promise<{ eventId: string; eventName: string }>;
   onCreateMailTask: (form: FormData) => Promise<unknown>;
   onSendTestMail: (form: FormData) => Promise<TestSendResult>;
+  onDeleteMailTask: (mailTaskId: string) => Promise<{ mailTaskName: string; sentBatches: number }>;
   onAddSuppression: (email: string, reason: string) => Promise<void>;
   onRemoveSuppression: (id: string) => Promise<void>;
   onCreateInvite: (eventId: string) => Promise<{ id: string; eventId: string; eventName: string; url: string; expiresAt: string }>;
@@ -31,6 +32,8 @@ export function AdminPanel({ overview, onCreateEvent, onDeleteEvent, onCreateMai
   // Remounting the composer is how its body, HTML and image state gets cleared
   // after a successful submit, since form.reset() only clears DOM inputs.
   const [composerKey, setComposerKey] = useState(0);
+  const [taskToDelete, setTaskToDelete] = useState<MailTaskSummary | null>(null);
+  const [taskDeleteWorking, setTaskDeleteWorking] = useState(false);
   const router = useRouter();
   const event = overview.event;
   const activities = useMemo(
@@ -73,6 +76,21 @@ export function AdminPanel({ overview, onCreateEvent, onDeleteEvent, onCreateMai
       setComposerKey((key) => key + 1);
     } catch { /* Parent displays the API error. */ } finally {
       setTaskWorking(false);
+    }
+  }
+
+  async function deleteSelectedTask() {
+    if (!taskToDelete) return;
+    setTaskDeleteWorking(true);
+    try {
+      await onDeleteMailTask(taskToDelete.id);
+      // Drop the deleted task from the URL so the page does not reopen it.
+      if (overview.mailTask?.id === taskToDelete.id && event) {
+        router.replace(`/admin?eventId=${encodeURIComponent(event.id)}`);
+      }
+      setTaskToDelete(null);
+    } catch { /* Parent displays the API error. */ } finally {
+      setTaskDeleteWorking(false);
     }
   }
 
@@ -193,7 +211,23 @@ export function AdminPanel({ overview, onCreateEvent, onDeleteEvent, onCreateMai
                     const progress = task.totalBatches ? Math.round((task.sentBatches / task.totalBatches) * 100) : 0;
                     return (
                       <article key={task.id} className="rounded-2xl border border-[#e1e6e1] bg-[#fbfcfb] p-4 transition hover:border-[#cfd8d1] hover:bg-white">
-                        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="truncate text-sm font-semibold text-[#2b3830]">{task.name}</h3><p className="mt-1 truncate text-xs text-[#7b837c]">{task.subject}</p></div><StatusBadge status={task.status} /></div>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0"><h3 className="truncate text-sm font-semibold text-[#2b3830]">{task.name}</h3><p className="mt-1 truncate text-xs text-[#7b837c]">{task.subject}</p></div>
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            <StatusBadge status={task.status} />
+                            <button
+                              type="button"
+                              aria-label={`Delete mail task ${task.name}`}
+                              title="Delete this mail task"
+                              onClick={() => setTaskToDelete(task)}
+                              className="grid h-7 w-7 place-items-center rounded-lg border border-[#e4e0dc] text-[#9a7f75] transition hover:border-[#e5c8be] hover:bg-[#fff6f3] hover:text-[#a1503a]"
+                            >
+                              <svg viewBox="0 0 16 16" aria-hidden className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                                <path d="M2.8 4.5h10.4M6.5 4.5V3.2h3v1.3M4.2 4.5l.6 8.3h6.4l.6-8.3M6.6 7v3.4M9.4 7v3.4" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
                         <div className="mt-4 flex items-center justify-between text-[11px] text-[#747d75]"><span>{task.sentBatches} of {task.totalBatches} sets</span><span className="font-semibold text-[#42614e]">{progress}%</span></div>
                         <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#e7ebe7]"><div className="h-full rounded-full bg-[#4a7a5c] transition-[width]" style={{ width: `${progress}%` }} /></div>
                         <p className="mt-3 truncate text-[11px] text-[#8a918b]">To {task.toEmail} · {formatNumber(task.sentRecipients)}/{formatNumber(task.totalRecipients)} recipients</p>
@@ -263,6 +297,28 @@ export function AdminPanel({ overview, onCreateEvent, onDeleteEvent, onCreateMai
       </section>
 
       <SuppressionSection overview={overview} onAdd={onAddSuppression} onRemove={onRemoveSuppression} />
+
+      {taskToDelete ? (
+        <div className="fixed inset-0 z-[70] grid place-items-center bg-[#15251d]/55 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget && !taskDeleteWorking) setTaskToDelete(null); }}>
+          <section role="alertdialog" aria-modal="true" aria-labelledby="delete-task-title" aria-describedby="delete-task-description" className="w-full max-w-md rounded-[24px] border border-[#eadbd5] bg-white p-6 shadow-[0_24px_80px_rgba(24,36,29,.28)] sm:p-7">
+            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#fff0eb] text-sm font-bold text-[#a14f39]">!</span>
+            <h2 id="delete-task-title" className="mt-5 text-xl font-semibold tracking-[-0.025em] text-[#2d332f]">Delete {taskToDelete.name}?</h2>
+            <p id="delete-task-description" className="mt-2 text-sm leading-6 text-[#737a74]">
+              This permanently removes the message, its {taskToDelete.totalBatches} recipient {taskToDelete.totalBatches === 1 ? 'set' : 'sets'}, their delivery records, any inline images, and this task&rsquo;s activity. The event and its participant list stay as they are.
+            </p>
+            {taskToDelete.sentBatches > 0 ? (
+              <p role="alert" className="mt-3 rounded-xl border border-[#ead8bb] bg-[#fff9ef] p-3 text-xs leading-5 text-[#7a5419]">
+                {formatNumber(taskToDelete.sentRecipients)} {taskToDelete.sentRecipients === 1 ? 'recipient has' : 'recipients have'} already received this message. Deleting it does not unsend anything — it only removes the record of it from Relay.
+              </p>
+            ) : null}
+            <p className="mt-3 text-xs leading-5 text-[#8b938c]">Unsubscribes are kept: anyone who opted out stays opted out.</p>
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button type="button" disabled={taskDeleteWorking} onClick={() => setTaskToDelete(null)} className="h-10 rounded-xl border border-[#d8ded9] px-4 text-sm font-semibold text-[#58635b] disabled:opacity-50">Cancel</button>
+              <button type="button" disabled={taskDeleteWorking} onClick={() => void deleteSelectedTask()} className="h-10 rounded-xl bg-[#a64f39] px-4 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(166,79,57,.2)] transition hover:bg-[#923f2c] disabled:cursor-not-allowed disabled:opacity-50">{taskDeleteWorking ? 'Deleting…' : 'Delete permanently'}</button>
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       {deleteOpen && event ? (
         <div className="fixed inset-0 z-[70] grid place-items-center bg-[#15251d]/55 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget && !deleteWorking) setDeleteOpen(false); }}>

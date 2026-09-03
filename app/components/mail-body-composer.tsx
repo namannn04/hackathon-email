@@ -1,6 +1,6 @@
 'use client';
 
-import { useDeferredValue, useMemo, useState } from 'react';
+import { useDeferredValue, useMemo, useState, useSyncExternalStore } from 'react';
 import {
   EmailPreviewFrame,
   HtmlNotices,
@@ -104,7 +104,9 @@ export function MailBodyComposer({ disabled, subject, userEmail, gmailAccounts, 
   const [testAccountId, setTestAccountId] = useState('');
   const [testWorking, setTestWorking] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
-  const origin = typeof window === 'undefined' ? '' : window.location.origin;
+  // Reading window during render would make the server and client markup differ
+  // and fail hydration; a store with a server snapshot is the safe way in.
+  const origin = useSyncExternalStore(subscribeToOrigin, getOrigin, getServerOrigin);
 
   // Typing in a large template should not recompile on every keystroke.
   const deferredHtml = useDeferredValue(htmlEnabled ? bodyHtml : '');
@@ -527,3 +529,7 @@ function toBase64(file: File): Promise<string> {
     reader.readAsDataURL(file);
   });
 }
+
+const subscribeToOrigin = () => () => undefined;
+const getOrigin = () => window.location.origin;
+const getServerOrigin = () => '';

@@ -164,6 +164,22 @@ export function RelayApp({ view, eventId, mailTaskId }: { view: AppView; eventId
     return data;
   }
 
+  async function deleteMailTask(mailTaskId: string) {
+    setError(null);
+    try {
+      const result = await api<{ mailTaskName: string; sentBatches: number }>('/api/mail-tasks', {
+        method: 'DELETE',
+        body: JSON.stringify({ mailTaskId }),
+      });
+      setNotice(`Mail task "${result.mailTaskName}" was deleted.`);
+      await load();
+      return result;
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'The mail task could not be deleted.');
+      throw deleteError;
+    }
+  }
+
   async function sendTestMail(form: FormData) {
     // Multipart so any inline images ride along, exactly as the create call does.
     setError(null);
@@ -231,7 +247,7 @@ export function RelayApp({ view, eventId, mailTaskId }: { view: AppView; eventId
       {error ? <Toast tone="error" message={error} onClose={() => setError(null)} /> : null}
       {view === 'campaign' ? <BatchPicker overview={overview} onPreview={previewBatch} onSend={sendBatch} onAddMockAccount={addMockAccount} /> : null}
       {view === 'batches' ? <MyBatchesPanel overview={overview} onAddMockAccount={addMockAccount} onDisconnectAccount={disconnectGmailAccount} /> : null}
-      {view === 'admin' ? <AdminPanel overview={overview} onCreateEvent={createEvent} onDeleteEvent={deleteEvent} onCreateMailTask={createMailTask} onSendTestMail={sendTestMail} onAddSuppression={addSuppression} onRemoveSuppression={removeSuppression} onCreateInvite={createEventInvite} onRevokeInvite={revokeEventInvite} /> : null}
+      {view === 'admin' ? <AdminPanel overview={overview} onCreateEvent={createEvent} onDeleteEvent={deleteEvent} onCreateMailTask={createMailTask} onSendTestMail={sendTestMail} onDeleteMailTask={deleteMailTask} onAddSuppression={addSuppression} onRemoveSuppression={removeSuppression} onCreateInvite={createEventInvite} onRevokeInvite={revokeEventInvite} /> : null}
     </RelayShell>
   );
 }
