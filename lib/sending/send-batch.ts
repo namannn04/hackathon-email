@@ -7,6 +7,7 @@ import { usesMockTransport } from '@/lib/gmail/transport';
 import { gmailAccountHealth } from '@/lib/gmail/scopes';
 import { HttpError } from '@/lib/http';
 import { buildUnsubscribeUrl, createUnsubscribeToken } from '@/lib/unsubscribe/token';
+import { maxBccForToCount, readToAddresses } from './addresses';
 import { buildGmailMime } from './mime';
 
 export async function getBatchPreview(batchId: string, user: User) {
@@ -98,7 +99,11 @@ export async function sendBatch(batchId: string, gmailAccountId: string, user: U
     });
     const recipients = await loadSendableRecipients(batchId, true);
     if (!recipients.length) throw new HttpError(409, 'This set has no sendable recipients.', 'NO_SENDABLE_RECIPIENTS');
-    if (recipients.length > 499) throw new HttpError(409, 'A set cannot exceed 499 BCC recipients because the fixed To address also counts.', 'GMAIL_RECIPIENT_LIMIT');
+    const toCount = readToAddresses(batch.mailTask.toEmail).length;
+    const maxBcc = maxBccForToCount(toCount);
+    if (recipients.length > maxBcc) {
+      throw new HttpError(409, `A set cannot exceed ${maxBcc} BCC recipients, because this task's ${toCount} To ${toCount === 1 ? 'address counts' : 'addresses count'} toward Gmail's 500-recipient message limit.`, 'GMAIL_RECIPIENT_LIMIT');
+    }
 
     let providerMessageId: string;
     if (usesMockTransport()) providerMessageId = `mock-${send.id}`;

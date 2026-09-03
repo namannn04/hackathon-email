@@ -121,4 +121,51 @@ describe('Gmail MIME construction', () => {
     expect(mime).not.toMatch(/^Bcc:/m);
     expect(mime).toContain('Subject: ');
   });
+
+  it('writes several fixed To addresses as one comma-separated header', () => {
+    const mime = decodeRaw(buildGmailMime({
+      sender: 'sender@example.com',
+      to: 'organizer@example.com, team@example.com',
+      recipients: ['one@example.com'],
+      subject: 'Update',
+      bodyText: 'Hello',
+      bodyHtml: '<p>Hello</p>',
+      messageId: '<relay.b9@relay.internal>',
+      batchId: 'b9',
+    }));
+    expect(mime).toContain('To: organizer@example.com, team@example.com');
+    expect(mime).toContain('Bcc: one@example.com');
+  });
+
+  it('folds a long To list and keeps a comma between every address', () => {
+    const addresses = Array.from({ length: 5 }, (_, index) => `a-very-long-organizer-address-${index}@example.com`);
+    const mime = decodeRaw(buildGmailMime({
+      sender: 'sender@example.com',
+      to: addresses.join(', '),
+      recipients: ['one@example.com'],
+      subject: 'Update',
+      bodyText: 'Hello',
+      bodyHtml: '<p>Hello</p>',
+      messageId: '<relay.b10@relay.internal>',
+      batchId: 'b10',
+    }));
+    // Only the From line precedes To here, so drop just that one.
+    const headerLines = mime.slice(0, mime.indexOf('\r\nBcc:')).split('\r\n').slice(1);
+    expect(headerLines.every((line) => line.length <= 78)).toBe(true);
+    expect(headerLines.join('\r\n').replace(/\r\n[ \t]+/g, ' ')).toBe(`To: ${addresses.join(', ')}`);
+  });
+
+  it('ignores blank entries in a stored To field', () => {
+    const mime = decodeRaw(buildGmailMime({
+      sender: 'sender@example.com',
+      to: 'a@example.com, , b@example.com,',
+      recipients: ['one@example.com'],
+      subject: 'Update',
+      bodyText: 'Hello',
+      bodyHtml: '<p>Hello</p>',
+      messageId: '<relay.b11@relay.internal>',
+      batchId: 'b11',
+    }));
+    expect(mime).toContain('To: a@example.com, b@example.com');
+  });
 });

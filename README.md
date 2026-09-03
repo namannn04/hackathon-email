@@ -76,6 +76,12 @@ The compiled HTML is what is stored on the mail task, what the MIME `text/html` 
 
 Inline images are limited to 5 files, 2 MB each and 8 MB in total, because every recipient set carries its own copy of the message.
 
+## The fixed To list
+
+A mail task's To field takes up to 5 comma-separated addresses. The compose form parses the field with the same code the API enforces, listing each address it read so two addresses are visibly two, and naming anything it rejected rather than dropping it quietly. Addresses are lowercased and de-duplicated.
+
+Gmail counts To, Cc and Bcc together against one message's 500-recipient limit, so every extra To address costs a Bcc slot: one To leaves room for 499 Bcc, two for 498, and the set-size field's maximum follows along. The send path recomputes the same limit from the task's own To list, so a task created with one To address keeps its 499.
+
 ## Set sizing
 
 The default target is 300 BCC recipients. A remainder of 100 or more becomes its own set. A remainder below 100 is merged into the previous set when that does not exceed 499 BCC recipients (Gmail's 500-recipient message limit also counts the fixed `To`). Examples:

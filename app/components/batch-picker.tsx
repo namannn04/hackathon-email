@@ -87,7 +87,7 @@ export function BatchPicker({ overview, onPreview, onSend, onAddMockAccount }: {
           <section className="mb-6 grid gap-3 sm:grid-cols-3">
             <Metric label="Available sets" value={String(overview.availableBatches.length)} note="Select only one at a time" />
             <Metric label="Mail progress" value={`${progress}%`} note={`${task.sentBatches} of ${task.totalBatches} sets sent`} />
-            <Metric label="Fixed To" value={task.toEmail} note={task.subject} compact />
+            <Metric label={task.toEmail.includes(',') ? `Fixed To · ${task.toEmail.split(',').length}` : 'Fixed To'} value={task.toEmail} note={task.subject} compact />
           </section>
 
           <section className="overflow-hidden rounded-[20px] border border-[#dcdcd5] bg-white">
@@ -110,7 +110,7 @@ export function BatchPicker({ overview, onPreview, onSend, onAddMockAccount }: {
         <div className="flex items-start justify-between gap-4"><div><p className="text-xs font-medium text-[#4e755e]">One-message preview</p><h2 className="mt-1 text-xl font-semibold">{preview.eventName} · {preview.mailTaskName} · Set #{preview.batchNumber}</h2></div><button onClick={() => setPreview(null)} className="text-sm text-[#77776f]">Close</button></div>
         <div className="mt-6 grid gap-4 lg:grid-cols-[220px_1fr]">
           <div className="space-y-3">
-            <PreviewField label="To" value={preview.to} />
+            <PreviewField label={preview.to.includes(',') ? `To · ${preview.to.split(',').length} addresses` : 'To'} value={preview.to} />
             <PreviewField label="Subject" value={preview.subject} />
             <label className="block text-xs font-medium text-[#66665f]">Send from
               <select value={selectedGmailAccountId} onChange={(e) => setGmailAccountId(e.target.value)} className="field-input mt-2">

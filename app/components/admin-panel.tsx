@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { MailBodyComposer, type TestSendResult } from './mail-body-composer';
+import { MAX_TO_ADDRESSES, maxBccForToCount, parseToAddresses } from '@/lib/sending/addresses';
 import type { MailTaskSummary, Overview } from './types';
 
 type EventResult = { eventId: string; accepted: number; invalid: number; duplicates: number };
@@ -29,6 +30,7 @@ export function AdminPanel({ overview, onCreateEvent, onDeleteEvent, onCreateMai
   const [inviteWorking, setInviteWorking] = useState(false);
   const [revokingInviteId, setRevokingInviteId] = useState<string | null>(null);
   const [subject, setSubject] = useState('');
+  const [toField, setToField] = useState('');
   // Remounting the composer is how its body, HTML and image state gets cleared
   // after a successful submit, since form.reset() only clears DOM inputs.
   const [composerKey, setComposerKey] = useState(0);
@@ -40,6 +42,10 @@ export function AdminPanel({ overview, onCreateEvent, onDeleteEvent, onCreateMai
     () => overview.activities.filter((item) => activityTask === 'all' || item.mailTaskId === activityTask),
     [overview.activities, activityTask],
   );
+  // Parsed the same way the API will parse it, so the counts shown are the
+  // counts enforced.
+  const toParse = useMemo(() => parseToAddresses(toField), [toField]);
+  const maxBatchSize = maxBccForToCount(toParse.addresses.length);
   const allTasks = overview.events.flatMap((item) => item.mailTasks);
   const totalParticipants = overview.events.reduce((sum, item) => sum + item.recipientCount, 0);
   const successfulSets = allTasks.reduce((sum, task) => sum + task.sentBatches, 0);
@@ -73,6 +79,7 @@ export function AdminPanel({ overview, onCreateEvent, onDeleteEvent, onCreateMai
       await onCreateMailTask(form);
       e.currentTarget.reset();
       setSubject('');
+      setToField('');
       setComposerKey((key) => key + 1);
     } catch { /* Parent displays the API error. */ } finally {
       setTaskWorking(false);
@@ -261,8 +268,24 @@ export function AdminPanel({ overview, onCreateEvent, onDeleteEvent, onCreateMai
         <form onSubmit={submitTask} className="mt-6 space-y-5">
           <div className="grid gap-4 lg:grid-cols-3">
             <Field label="Mail task name"><input name="name" required maxLength={120} disabled={!event} className="field-input" placeholder="Reminder — 3 days before" /></Field>
-            <Field label="Fixed To address"><input name="toEmail" required type="email" disabled={!event} className="field-input" placeholder="organizer@example.com" /></Field>
-            <Field label="Target set size" hint="Maximum 499"><input name="batchSize" required type="number" min={1} max={499} defaultValue={300} disabled={!event} className="field-input" /></Field>
+            <Field label="Fixed To addresses" hint={`Up to ${MAX_TO_ADDRESSES}, comma separated`}>
+              <input
+                name="toEmail"
+                required
+                type="text"
+                inputMode="email"
+                autoComplete="off"
+                spellCheck={false}
+                maxLength={1000}
+                disabled={!event}
+                value={toField}
+                onChange={(e) => setToField(e.target.value)}
+                className="field-input"
+                placeholder="organizer@example.com, team@example.com"
+              />
+              <ToAddressReadout parse={toParse} maxBatchSize={maxBatchSize} />
+            </Field>
+            <Field label="Target set size" hint={`Maximum ${maxBatchSize}`}><input name="batchSize" required type="number" min={1} max={maxBatchSize} defaultValue={300} disabled={!event} className="field-input" /></Field>
           </div>
           <Field label="Subject"><input name="subject" required maxLength={180} disabled={!event} value={subject} onChange={(e) => setSubject(e.target.value)} className="field-input" placeholder="Your event update" /></Field>
           <MailBodyComposer
@@ -332,6 +355,47 @@ export function AdminPanel({ overview, onCreateEvent, onDeleteEvent, onCreateMai
             </div>
           </section>
         </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Shows the To field the way the server reads it: one chip per address, so two
+ * comma-separated addresses visibly become two, and the Bcc room they leave.
+ */
+function ToAddressReadout({ parse, maxBatchSize }: { parse: ReturnType<typeof parseToAddresses>; maxBatchSize: number }) {
+  if (!parse.addresses.length && !parse.invalid.length && !parse.duplicates.length) return null;
+  return (
+    <div className="mt-2 space-y-1.5">
+      {parse.addresses.length ? (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] font-medium text-[#5f6a62]">
+            {parse.addresses.length} {parse.addresses.length === 1 ? 'address' : 'addresses'}:
+          </span>
+          {parse.addresses.map((address, index) => (
+            <span key={address} className="inline-flex items-center gap-1 rounded-lg border border-[#dbe4dd] bg-[#f7faf8] px-2 py-0.5 font-mono text-[10px] text-[#42614e]">
+              <span className="text-[#8ea79a]">{index + 1}</span>
+              {address}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {parse.invalid.length ? (
+        <p role="alert" className="text-[11px] leading-4 text-[#a1503a]">
+          Not a valid address: {parse.invalid.join(', ')}
+        </p>
+      ) : null}
+      {parse.duplicates.length ? (
+        <p className="text-[11px] leading-4 text-[#8a6a2c]">
+          Repeated once only: {parse.duplicates.join(', ')}
+        </p>
+      ) : null}
+      {parse.addresses.length ? (
+        <p className="text-[11px] leading-4 text-[#8b938c]">
+          Each To address counts toward Gmail&rsquo;s 500-recipient limit, so a set can hold up to{' '}
+          <strong className="font-medium text-[#5f6a62]">{formatNumber(maxBatchSize)} Bcc</strong> recipients.
+        </p>
       ) : null}
     </div>
   );

@@ -21,7 +21,9 @@ export function buildGmailMime(input: {
   date?: Date;
 }): string {
   const sender = cleanHeader(input.sender);
-  const to = cleanHeader(input.to);
+  // RFC 5322 To is itself a comma-separated list, so a mail task's fixed To may
+  // hold several addresses; fold them the same way a long Bcc is folded.
+  const toAddresses = input.to.split(',').map(cleanHeader).filter(Boolean);
   const recipients = input.recipients.map(cleanHeader);
   const seed = input.batchId.replace(/[^a-z0-9]/gi, '');
   const altBoundary = `relay_alt_${seed}`;
@@ -44,7 +46,7 @@ export function buildGmailMime(input: {
 
   const headers = [
     `From: ${sender}`,
-    `To: ${to}`,
+    foldAddressHeader('To', toAddresses),
     // A test message goes to the sender alone, and an empty "Bcc:" header is
     // malformed, so the header only appears when there is a set behind it.
     ...(recipients.length ? [foldAddressHeader('Bcc', recipients)] : []),

@@ -56,7 +56,7 @@ export async function createMailTask(input: {
       id: mailTaskId,
       eventId: event.id,
       name: input.name,
-      toEmail: input.toEmail.toLowerCase(),
+      toEmail: input.toEmail,
       subject: input.subject,
       bodyText: body.text,
       bodyHtml: body.html,
