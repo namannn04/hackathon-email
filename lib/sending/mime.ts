@@ -17,6 +17,8 @@ export function buildGmailMime(input: {
   messageId: string;
   batchId: string;
   images?: InlineImage[];
+  unsubscribeUrl?: string;
+  date?: Date;
 }): string {
   const sender = cleanHeader(input.sender);
   const to = cleanHeader(input.to);
@@ -43,9 +45,19 @@ export function buildGmailMime(input: {
   const headers = [
     `From: ${sender}`,
     `To: ${to}`,
-    foldAddressHeader('Bcc', recipients),
+    // A test message goes to the sender alone, and an empty "Bcc:" header is
+    // malformed, so the header only appears when there is a set behind it.
+    ...(recipients.length ? [foldAddressHeader('Bcc', recipients)] : []),
     `Subject: ${encodeHeader(input.subject)}`,
     `Message-ID: ${cleanHeader(input.messageId)}`,
+    `Date: ${(input.date ?? new Date()).toUTCString().replace('GMT', '+0000')}`,
+    // Mailbox providers surface this as their own "Unsubscribe" control, and
+    // its absence is a negative signal on bulk mail. One-Click POST is
+    // deliberately not advertised: the whole set shares one Bcc'd body, so a
+    // POST could not say which recipient to remove. The link asks instead.
+    ...(input.unsubscribeUrl
+      ? [`List-Unsubscribe: <${cleanHeader(input.unsubscribeUrl)}>, <mailto:${cleanHeader(sender)}?subject=Unsubscribe>`]
+      : []),
     'MIME-Version: 1.0',
   ];
 

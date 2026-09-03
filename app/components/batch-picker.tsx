@@ -3,7 +3,16 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
+import {
+  EmailPreviewFrame,
+  HtmlSource,
+  PreviewTabs,
+  PreviewWidthToggle,
+  type PreviewWidth,
+} from './email-preview';
 import type { BatchPreview, Overview } from './types';
+
+type PreviewTab = 'rendered' | 'html' | 'text' | 'bcc';
 
 export function BatchPicker({ overview, onPreview, onSend, onAddMockAccount }: {
   overview: Overview;
@@ -16,6 +25,8 @@ export function BatchPicker({ overview, onPreview, onSend, onAddMockAccount }: {
   const [preview, setPreview] = useState<BatchPreview | null>(null);
   const [gmailAccountId, setGmailAccountId] = useState(overview.gmailAccounts.find((account) => account.canSend)?.id ?? '');
   const [working, setWorking] = useState(false);
+  const [tab, setTab] = useState<PreviewTab>('rendered');
+  const [previewWidth, setPreviewWidth] = useState<PreviewWidth>('desktop');
   const sendableAccounts = useMemo(
     () => overview.gmailAccounts.filter((account) => account.canSend),
     [overview.gmailAccounts],
@@ -31,7 +42,10 @@ export function BatchPicker({ overview, onPreview, onSend, onAddMockAccount }: {
   async function openPreview() {
     if (!selectedId) return;
     setWorking(true);
-    try { setPreview(await onPreview(selectedId)); } catch { /* Parent displays the API error. */ } finally { setWorking(false); }
+    try {
+      setPreview(await onPreview(selectedId));
+      setTab('rendered');
+    } catch { /* Parent displays the API error. */ } finally { setWorking(false); }
   }
 
   async function send() {
@@ -106,9 +120,33 @@ export function BatchPicker({ overview, onPreview, onSend, onAddMockAccount }: {
             {!sendableAccounts.length && overview.gmailAccounts.length ? <div role="alert" className="rounded-xl border border-[#ead8bb] bg-[#fff9ef] p-3 text-xs leading-5 text-[#7a5419]">None of the connected accounts currently has a valid Gmail send permission. Reconnect one before sending.</div> : null}
             {overview.mockTransport ? <button onClick={() => void onAddMockAccount()} className="w-full rounded-xl border border-[#d6d6cf] px-3 py-2 text-xs font-medium">Add test Gmail</button> : <a href={`/api/gmail/connect?returnTo=${encodeURIComponent(`/dashboard?eventId=${preview.eventId}&mailTaskId=${preview.mailTaskId}`)}`} className="block rounded-xl border border-[#d6d6cf] px-3 py-2 text-center text-xs font-medium">Connect another Gmail</a>}
           </div>
-          <div className="space-y-4">
-            <div><p className="mb-2 text-xs font-medium text-[#66665f]">BCC · {preview.bcc.length} addresses</p><div className="max-h-40 overflow-auto rounded-xl border border-[#e0e0da] bg-[#fafaf8] p-3 font-mono text-[11px] leading-5 text-[#686861]">{preview.bcc.join(', ')}</div></div>
-            <div><p className="mb-2 text-xs font-medium text-[#66665f]">Body</p><div className="max-h-72 overflow-auto whitespace-pre-wrap rounded-xl border border-[#e0e0da] p-4 text-sm leading-6">{preview.bodyText}</div></div>
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <PreviewTabs
+                value={tab}
+                onChange={setTab}
+                tabs={[
+                  { id: 'rendered', label: 'Rendered email' },
+                  { id: 'html', label: 'HTML part' },
+                  { id: 'text', label: 'Text part' },
+                  { id: 'bcc', label: 'BCC', badge: String(preview.bcc.length) },
+                ]}
+              />
+              {tab === 'rendered' ? <PreviewWidthToggle value={previewWidth} onChange={setPreviewWidth} /> : null}
+            </div>
+            {tab === 'rendered' ? (
+              <>
+                <EmailPreviewFrame
+                  src={`/api/batches/preview/body?batchId=${encodeURIComponent(preview.batchId)}`}
+                  title={`Rendered email for set ${preview.batchNumber}`}
+                  width={previewWidth}
+                />
+                <p className="text-[11px] leading-4 text-[#8a8a83]">Rendered from the message body itself, inline images included. Mail clients vary slightly in spacing and font.</p>
+              </>
+            ) : null}
+            {tab === 'html' ? <HtmlSource html={preview.bodyHtml} /> : null}
+            {tab === 'text' ? <div className="max-h-[420px] overflow-auto whitespace-pre-wrap rounded-xl border border-[#e0e0da] p-4 text-sm leading-6">{preview.bodyText}</div> : null}
+            {tab === 'bcc' ? <div className="max-h-[420px] overflow-auto rounded-xl border border-[#e0e0da] bg-[#fafaf8] p-3 font-mono text-[11px] leading-5 text-[#686861]">{preview.bcc.join(', ')}</div> : null}
           </div>
         </div>
         <div className="mt-6 flex flex-col items-end gap-2 border-t border-[#ecece7] pt-5"><p className="text-xs text-[#77776f]">This sends one Gmail message, not {preview.bcc.length} separate messages.</p><button onClick={() => void send()} disabled={!selectedGmailAccountId || working} className="h-11 rounded-xl bg-[#263d32] px-5 text-sm font-semibold text-white disabled:opacity-45">{working ? 'Sending one message…' : `Send 1 message to ${preview.bcc.length} BCC recipients`}</button></div>

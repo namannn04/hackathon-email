@@ -16,11 +16,54 @@ Relay lets an organizer create events, import participants once, create multiple
 
 ## Email body and images
 
-A mail task stores a plain-text body and an HTML body, and both are sent as a `multipart/alternative` message.
+A mail task stores a plain-text body and an HTML body, and both are sent as a `multipart/alternative` message. Either field on its own is enough — the missing half is built from the one you wrote, so the message always carries both alternatives:
 
-- Leaving the HTML body empty keeps the current behaviour: the plain text is escaped into a simple HTML document.
-- Filling it in uses that HTML verbatim, so an organizer can control layout or reference a hosted image with `<img src="https://...">`.
+- **Plain text only** — it is escaped into a simple HTML document for the `text/html` part.
+- **HTML only** — the `text/plain` part is derived from the compiled HTML by `htmlToPlainText`: block boundaries become line breaks, list items become dashes, table rows stay on one line with `|` between cells, a link becomes `label (https://…)`, and an image becomes `[alt text]`. Whitespace collapses the way a browser collapses it, including inside `<pre>`. An empty text part reads as suspicious to spam filters and leaves text-only clients with a blank message, which is why it is never left empty.
+- **Both** — each is used exactly as written; nothing is derived.
+
+Submitting neither is the only rejected case.
+- Filling it in runs the markup through the email-HTML compiler in `lib/email-html/`, so an organizer can lay the message out with tables, headings, lists, links, buttons, colours and inline CSS.
 - Attaching images uploads them with the mail task and embeds them in the message itself as `multipart/related` parts. Reference them from the HTML body as `cid:image1`, `cid:image2`, in upload order. With no HTML body they are stacked on the side chosen by **Image placement**, above or below the text.
+
+### What the compiler keeps
+
+`sanitizeEmailHtml` decides once what the outgoing message carries, and reports every change it made:
+
+- **Kept**: the tag allowlist in `lib/email-html/sanitize.ts` (tables and every table part, headings, paragraphs, lists, `a`, `img`, `blockquote`, `pre`, the usual inline formatting, `font`, `center`) with their layout attributes — `width`, `height`, `align`, `valign`, `bgcolor`, `background`, `border`, `cellpadding`, `cellspacing`, `colspan`, `rowspan`, `nowrap` — plus `style`, `title`, `dir`, `lang`, `class` and `id` on any of them.
+- **Filtered**: `style` is checked declaration by declaration against a property allowlist (colour, font, spacing, border, sizing, alignment, list, table and flex/grid families). `position`, `behavior`, `filter`, `expression()` and friends are dropped without discarding the rest of the attribute.
+- **Removed**: `script`, `iframe`, `form` and its controls, `object`, `embed`, `svg`, `video`, `audio` and their content; every `on*` handler; and any URL that is not `https`, `http`, `mailto`, `tel`, `cid` or an inline `data:image`, including entity-obfuscated `javascript:`.
+- **Repaired**: unclosed and mis-nested tags are balanced, `<html>`/`<head>`/`<body>` scaffolding is unwrapped, and an `<img>` with no width is capped at `max-width:100%`. A style on `<body>` is carried over to a wrapping `<div>`, so a document's own font and background survive even though `<body>` itself cannot appear in a message body.
+
+Pasting a complete HTML document is fine — `<!doctype>`, `<head>`, `<meta>`, `<title>` and `<body>` are handled and only the body content is kept.
+
+### Unsubscribes
+
+Every message carries a `List-Unsubscribe` header and a visible unsubscribe link, because both are what mailbox providers expect from bulk mail.
+
+- The link is signed and names the **mail task**, not the person. One Gmail message carries a whole set in `Bcc`, so every recipient reads an identical body and a per-recipient link is impossible. The page therefore asks which address received the message.
+- `List-Unsubscribe-Post: One-Click` is deliberately **not** advertised: a one-click POST could not say which recipient to remove, so claiming support would be a promise the Bcc design cannot keep. A `mailto:` fallback is offered alongside the link.
+- The address must already be on that event's recipient list before anything is suppressed, so a link — which every recipient holds — cannot be used to block a stranger. A valid request always gives the same answer, so the page is not a membership oracle.
+- By default the footer is appended to the body. Put `{{unsubscribe_url}}` in an `href` to place the link inside your own design instead.
+- The link is written into the body when the mail task is created, using an id chosen before the row is written. The stored body is therefore already final — nothing is substituted at send time, which is what keeps a stored body's preview byte-exact.
+
+**How this works with a CSV.** The spreadsheet is never edited. `Suppression.normalizedEmail` is unique and global, and both mail-task creation and every send filter recipients against it, so an unsubscribed address is skipped from then on — including after the same CSV is re-imported, and including addresses already queued in an unsent set.
+
+### Send a test to yourself
+
+The compose screen has a **Send test email** button. It compiles the body with the same compiler, builds the message with the same MIME builder, and calls the same Gmail API a real set uses — so it proves the pipeline, not a preview of it.
+
+- The recipient is the signed-in organizer's own address, read from the session and never from the request.
+- There is no `Bcc` and no second `To`; the header block carries the organizer's address alone, so a test cannot reach a participant.
+- Nothing is persisted: no mail task, no set, no send record — only an audit entry.
+- With `GMAIL_MOCK_TRANSPORT` on, it reports that nothing was delivered instead of pretending to send.
+
+### Previews
+
+The compiled HTML is what is stored on the mail task, what the MIME `text/html` part carries, and what both previews render, so a preview cannot drift from the delivered email.
+
+- The compose screen runs the same compiler in the browser and renders the result in a sandboxed iframe, next to the HTML it will send, the plain-text alternative, and the list of adjustments it made.
+- The sending desk fetches `GET /api/batches/preview/body?batchId=…`, which returns the stored body with each `cid:` reference resolved from the stored image bytes. Previews are sandboxed without `allow-scripts`, so nothing in a body can execute.
 
 Inline images are limited to 5 files, 2 MB each and 8 MB in total, because every recipient set carries its own copy of the message.
 

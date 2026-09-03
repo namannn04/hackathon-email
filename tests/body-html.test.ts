@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildBodyHtml } from '@/lib/mail-tasks/manage';
+import { buildBodyHtml, compileBodyHtml } from '@/lib/email-html/document';
 
 describe('mail task HTML body', () => {
   it('stacks images above the text by default', () => {
@@ -22,10 +22,20 @@ describe('mail task HTML body', () => {
     expect(html).not.toContain('<b>there</b>');
   });
 
-  it('uses the authored HTML verbatim and ignores placement', () => {
-    const authored = '<p>Custom <img src="cid:image1"> layout</p>';
-    expect(buildBodyHtml(authored, 'ignored', ['image1'], 'below')).toBe(authored);
-    expect(buildBodyHtml(`  ${authored}  `, 'ignored', ['image1'])).toBe(authored);
+  it('compiles the authored HTML and ignores placement', () => {
+    const authored = '<p>Custom <img src="cid:image1" width="560"> layout</p>';
+    const compiled = '<p>Custom <img src="cid:image1" width="560" alt="" /> layout</p>';
+    expect(buildBodyHtml(authored, 'ignored', ['image1'], 'below')).toBe(compiled);
+    expect(buildBodyHtml(`  ${authored}  `, 'ignored', ['image1'])).toBe(compiled);
+  });
+
+  it('reports an attached image the authored HTML never places', () => {
+    const { warnings } = compileBodyHtml({
+      bodyHtml: '<p>No picture here</p>',
+      bodyText: 'ignored',
+      contentIds: ['image1'],
+    });
+    expect(warnings.some((warning) => warning.includes('cid:image1'))).toBe(true);
   });
 
   it('falls back to the plain document when there are no images', () => {

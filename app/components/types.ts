@@ -45,6 +45,7 @@ export type BatchPreview = {
   bcc: string[];
   subject: string;
   bodyText: string;
+  bodyHtml: string;
   recipientCount: number;
 };
 

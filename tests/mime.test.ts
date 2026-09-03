@@ -105,4 +105,20 @@ describe('Gmail MIME construction', () => {
     }));
     expect(mime).not.toContain('\r\nCc: attacker@example.com');
   });
+
+  it('omits the Bcc header when a message has no set behind it', () => {
+    const mime = decodeRaw(buildGmailMime({
+      sender: 'sender@example.com',
+      to: 'organizer@example.com',
+      recipients: [],
+      subject: 'Test message',
+      bodyText: 'Hello',
+      bodyHtml: '<p>Hello</p>',
+      messageId: '<relay.test.abc@relay.internal>',
+      batchId: 'test-abc',
+    }));
+    expect(mime).toContain('To: organizer@example.com');
+    expect(mime).not.toMatch(/^Bcc:/m);
+    expect(mime).toContain('Subject: ');
+  });
 });

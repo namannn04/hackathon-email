@@ -2,6 +2,8 @@ import type { User } from '@/generated/prisma/client';
 import { writeAudit } from '@/lib/audit';
 import { planBatchSizes } from '@/lib/batching/plan';
 import { getPrisma } from '@/lib/db/prisma';
+import { compileEmailBody, type ImagePlacement } from '@/lib/email-html/document';
+import { buildUnsubscribeUrl, createUnsubscribeToken } from '@/lib/unsubscribe/token';
 import { HttpError } from '@/lib/http';
 
 export async function createMailTask(input: {
@@ -9,11 +11,12 @@ export async function createMailTask(input: {
   name: string;
   toEmail: string;
   subject: string;
-  bodyText: string;
+  bodyText?: string;
   bodyHtml?: string;
   images?: Array<{ filename: string; mimeType: string; dataBase64: string; byteSize: number }>;
   imagePlacement?: ImagePlacement;
   batchSize: number;
+  origin: string;
 }, actor: User) {
   const prisma = getPrisma();
   const event = await prisma.event.findFirst({
@@ -37,14 +40,26 @@ export async function createMailTask(input: {
 
   const sizes = planBatchSizes(recipients.length, input.batchSize);
   const images = (input.images ?? []).map((image, index) => ({ ...image, contentId: `image${index + 1}`, position: index }));
+  // The unsubscribe link names this task, so its id is chosen before the row is
+  // written. That way the stored body is already final: nothing is substituted
+  // at send time, and the preview of a stored body stays byte-exact.
+  const mailTaskId = createId();
+  const body = compileEmailBody({
+    bodyHtml: input.bodyHtml,
+    bodyText: input.bodyText,
+    contentIds: images.map((image) => image.contentId),
+    placement: input.imagePlacement,
+    unsubscribeUrl: buildUnsubscribeUrl(input.origin, await createUnsubscribeToken(mailTaskId)),
+  });
   const task = await prisma.mailTask.create({
     data: {
+      id: mailTaskId,
       eventId: event.id,
       name: input.name,
       toEmail: input.toEmail.toLowerCase(),
       subject: input.subject,
-      bodyText: input.bodyText,
-      bodyHtml: buildBodyHtml(input.bodyHtml, input.bodyText, images.map((image) => image.contentId), input.imagePlacement),
+      bodyText: body.text,
+      bodyHtml: body.html,
       batchSize: input.batchSize,
       images: images.length
         ? { createMany: { data: images.map(({ contentId, filename, mimeType, dataBase64, byteSize, position }) => ({ contentId, filename, mimeType, dataBase64, byteSize, position })) } }
@@ -92,41 +107,10 @@ export async function createMailTask(input: {
     throw error;
   }
 
-  return { mailTaskId: task.id, eventId: event.id, batches: sizes.length, batchSizes: sizes };
+  return { mailTaskId: task.id, eventId: event.id, batches: sizes.length, batchSizes: sizes, htmlWarnings: body.warnings };
 }
 
-export type ImagePlacement = 'above' | 'below';
-
-/**
- * The organizer's own HTML wins, and then placement is theirs to decide.
- * Otherwise the plain body is escaped into a simple document with the
- * uploaded images stacked on the chosen side of it.
- */
-export function buildBodyHtml(
-  bodyHtml: string | undefined,
-  bodyText: string,
-  contentIds: string[],
-  placement: ImagePlacement = 'above',
-): string {
-  const authored = bodyHtml?.trim();
-  if (authored) return authored;
-  if (!contentIds.length) return plainTextToHtml(bodyText);
-  const pictures = contentIds
-    .map((contentId, index) => {
-      const spacing = placement === 'below'
-        ? `margin:${index === 0 ? '16px' : '0'} 0 16px`
-        : 'margin:0 0 16px';
-      return `<img src="cid:${contentId}" alt="" width="560" style="display:block;width:560px;max-width:100%;height:auto;${spacing}" />`;
-    })
-    .join('');
-  const text = plainTextToHtml(bodyText);
-  const inner = placement === 'below' ? `${text}${pictures}` : `${pictures}${text}`;
-  return `<div style="font-family:Arial,sans-serif;line-height:1.6">${inner}</div>`;
-}
-
-function plainTextToHtml(value: string) {
-  return `<div style="font-family:Arial,sans-serif;line-height:1.6;white-space:pre-wrap">${value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')}</div>`;
+/** A url-safe id in the shape the schema's own default produces. */
+function createId(): string {
+  return `mt${crypto.randomUUID().replaceAll('-', '')}`;
 }

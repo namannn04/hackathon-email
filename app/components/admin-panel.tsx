@@ -2,15 +2,17 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { MailBodyComposer, type TestSendResult } from './mail-body-composer';
 import type { Overview } from './types';
 
 type EventResult = { eventId: string; accepted: number; invalid: number; duplicates: number };
 
-export function AdminPanel({ overview, onCreateEvent, onDeleteEvent, onCreateMailTask, onAddSuppression, onRemoveSuppression, onCreateInvite, onRevokeInvite }: {
+export function AdminPanel({ overview, onCreateEvent, onDeleteEvent, onCreateMailTask, onSendTestMail, onAddSuppression, onRemoveSuppression, onCreateInvite, onRevokeInvite }: {
   overview: Overview;
   onCreateEvent: (form: FormData) => Promise<EventResult>;
   onDeleteEvent: (eventId: string) => Promise<{ eventId: string; eventName: string }>;
   onCreateMailTask: (form: FormData) => Promise<unknown>;
+  onSendTestMail: (form: FormData) => Promise<TestSendResult>;
   onAddSuppression: (email: string, reason: string) => Promise<void>;
   onRemoveSuppression: (id: string) => Promise<void>;
   onCreateInvite: (eventId: string) => Promise<{ id: string; eventId: string; eventName: string; url: string; expiresAt: string }>;
@@ -25,6 +27,10 @@ export function AdminPanel({ overview, onCreateEvent, onDeleteEvent, onCreateMai
   const [deleteWorking, setDeleteWorking] = useState(false);
   const [inviteWorking, setInviteWorking] = useState(false);
   const [revokingInviteId, setRevokingInviteId] = useState<string | null>(null);
+  const [subject, setSubject] = useState('');
+  // Remounting the composer is how its body, HTML and image state gets cleared
+  // after a successful submit, since form.reset() only clears DOM inputs.
+  const [composerKey, setComposerKey] = useState(0);
   const router = useRouter();
   const event = overview.event;
   const activities = useMemo(
@@ -63,6 +69,8 @@ export function AdminPanel({ overview, onCreateEvent, onDeleteEvent, onCreateMai
     try {
       await onCreateMailTask(form);
       e.currentTarget.reset();
+      setSubject('');
+      setComposerKey((key) => key + 1);
     } catch { /* Parent displays the API error. */ } finally {
       setTaskWorking(false);
     }
@@ -204,36 +212,39 @@ export function AdminPanel({ overview, onCreateEvent, onDeleteEvent, onCreateMai
       </section>
 
       <div className="mb-3 flex items-end justify-between gap-4"><div><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#899089]">Campaign setup</p><h2 className="mt-1 text-xl font-semibold tracking-[-0.025em] text-[#26342b]">Create and prepare</h2></div><p className="hidden text-xs text-[#858d86] sm:block">Complete the steps from left to right</p></div>
-      <div className="mb-6 grid items-start gap-5 xl:grid-cols-2">
-        <section id="create-event" className="scroll-mt-24 rounded-[24px] border border-[#dce2dc] bg-white p-5 shadow-[0_10px_30px_rgba(31,48,39,.04)] sm:p-6">
-          <SectionHeading step="01" title={overview.events.length ? 'Create another event' : 'Create event'} description="Import a new participant list. Existing events and their mail tasks stay unchanged." />
-          <form onSubmit={submitEvent} className="mt-6 space-y-4">
-            <Field label="Event name"><input name="name" required maxLength={120} className="field-input" placeholder="HackNova 2026" /></Field>
-            <Field label="Participant list" hint="CSV or XLSX"><input name="file" required type="file" accept=".csv,.xlsx" className="file-input" /></Field>
-            <button disabled={eventWorking} className="inline-flex h-11 items-center justify-center rounded-xl bg-[#203b2f] px-5 text-sm font-semibold text-white transition hover:bg-[#294a3a] disabled:cursor-not-allowed disabled:opacity-50">{eventWorking ? 'Importing participants…' : 'Create event'}</button>
-          </form>
-          {result ? <div className="mt-4 rounded-2xl border border-[#cee0d3] bg-[#f2f8f4] p-3 text-xs leading-5 text-[#315e43]">Imported <strong>{result.accepted}</strong> participants · {result.invalid} invalid · {result.duplicates} duplicates removed. <a className="font-semibold underline underline-offset-4" href={`/admin?eventId=${result.eventId}`}>Manage event</a></div> : null}
-        </section>
+      <section id="create-event" className="mb-5 scroll-mt-24 rounded-[24px] border border-[#dce2dc] bg-white p-5 shadow-[0_10px_30px_rgba(31,48,39,.04)] sm:p-6">
+        <SectionHeading step="01" title={overview.events.length ? 'Create another event' : 'Create event'} description="Import a new participant list. Existing events and their mail tasks stay unchanged." />
+        <form onSubmit={submitEvent} className="mt-6 grid items-end gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+          <Field label="Event name"><input name="name" required maxLength={120} className="field-input" placeholder="HackNova 2026" /></Field>
+          <Field label="Participant list" hint="CSV or XLSX"><input name="file" required type="file" accept=".csv,.xlsx" className="file-input" /></Field>
+          <button disabled={eventWorking} className="inline-flex h-11 items-center justify-center rounded-xl bg-[#203b2f] px-5 text-sm font-semibold text-white transition hover:bg-[#294a3a] disabled:cursor-not-allowed disabled:opacity-50">{eventWorking ? 'Importing participants…' : 'Create event'}</button>
+        </form>
+        {result ? <div className="mt-4 rounded-2xl border border-[#cee0d3] bg-[#f2f8f4] p-3 text-xs leading-5 text-[#315e43]">Imported <strong>{result.accepted}</strong> participants · {result.invalid} invalid · {result.duplicates} duplicates removed. <a className="font-semibold underline underline-offset-4" href={`/admin?eventId=${result.eventId}`}>Manage event</a></div> : null}
+      </section>
 
-        <section className="rounded-[24px] border border-[#dce2dc] bg-white p-5 shadow-[0_10px_30px_rgba(31,48,39,.04)] sm:p-6">
-          <SectionHeading step="02" title={event ? `Create mail task for ${event.name}` : 'Create mail task'} description={event ? 'Prepare the fixed message and let Relay build its recipient sets.' : 'Select or create an event before preparing its message.'} />
-          <form onSubmit={submitTask} className="mt-6 space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2"><Field label="Mail task name"><input name="name" required maxLength={120} disabled={!event} className="field-input" placeholder="Reminder — 3 days before" /></Field><Field label="Fixed To address"><input name="toEmail" required type="email" disabled={!event} className="field-input" placeholder="organizer@example.com" /></Field></div>
-            <Field label="Subject"><input name="subject" required maxLength={180} disabled={!event} className="field-input" placeholder="Your event update" /></Field>
-            <Field label="Plain-text body" hint="Required"><textarea name="bodyText" required rows={7} maxLength={50000} disabled={!event} className="field-input min-h-36 resize-y py-3" placeholder="Write the message volunteers will send…" /></Field>
-            <details className="group rounded-2xl border border-[#e0e5e0] bg-[#fafbfa] open:bg-white">
-              <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-semibold text-[#526057] outline-none"><span>Optional email formatting</span><span className="text-lg font-normal text-[#879087] transition group-open:rotate-45">+</span></summary>
-              <div className="space-y-4 border-t border-[#e7ebe7] p-4">
-                <Field label="HTML body" hint="Optional"><textarea name="bodyHtml" rows={6} maxLength={200000} disabled={!event} className="field-input min-h-28 resize-y py-3 font-mono text-xs" placeholder={'<div>\n  <p>Hi everyone,</p>\n</div>'} /><HelpText>Leave empty to use the plain-text body as-is. Use a full HTTPS URL for externally hosted images.</HelpText></Field>
-                <Field label="Inline images" hint="Up to 5, 2 MB each"><input name="images" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple disabled={!event} className="file-input" /><HelpText>The original file is embedded, while its email display width is capped near 560 px with the same aspect ratio.</HelpText></Field>
-                <Field label="Image placement"><select name="imagePlacement" defaultValue="above" disabled={!event} className="field-input"><option value="above">Above the text</option><option value="below">Below the text</option></select><HelpText>When using custom HTML, reference uploads as <code>cid:image1</code>, <code>cid:image2</code>, in order.</HelpText></Field>
-              </div>
-            </details>
-            <Field label="Target set size" hint="Maximum 499"><input name="batchSize" required type="number" min={1} max={499} defaultValue={300} disabled={!event} className="field-input max-w-40" /></Field>
+      <section className="mb-6 rounded-[24px] border border-[#dce2dc] bg-white p-5 shadow-[0_10px_30px_rgba(31,48,39,.04)] sm:p-6">
+        <SectionHeading step="02" title={event ? `Create mail task for ${event.name}` : 'Create mail task'} description={event ? 'Write the message, watch the preview, and let Relay build its recipient sets.' : 'Select or create an event before preparing its message.'} />
+        <form onSubmit={submitTask} className="mt-6 space-y-5">
+          <div className="grid gap-4 lg:grid-cols-3">
+            <Field label="Mail task name"><input name="name" required maxLength={120} disabled={!event} className="field-input" placeholder="Reminder — 3 days before" /></Field>
+            <Field label="Fixed To address"><input name="toEmail" required type="email" disabled={!event} className="field-input" placeholder="organizer@example.com" /></Field>
+            <Field label="Target set size" hint="Maximum 499"><input name="batchSize" required type="number" min={1} max={499} defaultValue={300} disabled={!event} className="field-input" /></Field>
+          </div>
+          <Field label="Subject"><input name="subject" required maxLength={180} disabled={!event} value={subject} onChange={(e) => setSubject(e.target.value)} className="field-input" placeholder="Your event update" /></Field>
+          <MailBodyComposer
+            key={composerKey}
+            disabled={!event}
+            subject={subject}
+            userEmail={overview.user.email}
+            gmailAccounts={overview.gmailAccounts}
+            onSendTest={onSendTestMail}
+          />
+          <div className="flex flex-wrap items-center gap-3 border-t border-[#edf0ed] pt-5">
             <button disabled={!event || taskWorking} className="inline-flex h-11 items-center justify-center rounded-xl bg-[#203b2f] px-5 text-sm font-semibold text-white transition hover:bg-[#294a3a] disabled:cursor-not-allowed disabled:opacity-45">{taskWorking ? 'Creating recipient sets…' : 'Create mail task and sets'}</button>
-          </form>
-        </section>
-      </div>
+            <p className="text-xs text-[#8b938c]">Volunteers see this same preview before every send.</p>
+          </div>
+        </form>
+      </section>
 
       <section className="mb-6 overflow-hidden rounded-[24px] border border-[#dce2dc] bg-white shadow-[0_10px_30px_rgba(31,48,39,.04)]">
         <div className="flex flex-col justify-between gap-4 border-b border-[#e8ece8] px-5 py-5 sm:flex-row sm:items-center sm:px-6">
@@ -308,9 +319,6 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   return <label className="block"><span className="mb-2 flex items-center justify-between gap-3 text-xs font-semibold text-[#5f6861]"><span>{label}</span>{hint ? <span className="font-normal text-[#9aa09a]">{hint}</span> : null}</span>{children}</label>;
 }
 
-function HelpText({ children }: { children: React.ReactNode }) {
-  return <p className="mt-1.5 text-[11px] leading-4 text-[#8a918b]">{children}</p>;
-}
 
 function Metric({ marker, label, value, note }: { marker: string; label: string; value: string; note: string }) {
   return <div className="rounded-[20px] border border-[#dce2dc] bg-white p-4 shadow-[0_8px_24px_rgba(31,48,39,.035)]"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-medium text-[#767e77]">{label}</p><p className="mt-2 text-2xl font-semibold tracking-[-0.035em] text-[#26342b]">{value}</p><p className="mt-1 text-xs text-[#929892]">{note}</p></div><span className="grid h-9 w-9 place-items-center rounded-xl bg-[#edf2ee] text-[10px] font-bold text-[#4d6857]">{marker}</span></div></div>;

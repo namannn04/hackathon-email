@@ -1,10 +1,12 @@
 import type { User } from '@/generated/prisma/client';
 import { writeAudit } from '@/lib/audit';
 import { getPrisma } from '@/lib/db/prisma';
+import { renderPreviewDocument } from '@/lib/email-html/document';
 import { GmailApiError, sendRawGmailMessage } from '@/lib/gmail/client';
 import { usesMockTransport } from '@/lib/gmail/transport';
 import { gmailAccountHealth } from '@/lib/gmail/scopes';
 import { HttpError } from '@/lib/http';
+import { buildUnsubscribeUrl, createUnsubscribeToken } from '@/lib/unsubscribe/token';
 import { buildGmailMime } from './mime';
 
 export async function getBatchPreview(batchId: string, user: User) {
@@ -22,11 +24,32 @@ export async function getBatchPreview(batchId: string, user: User) {
     bcc: recipients,
     subject: batch.mailTask.subject,
     bodyText: batch.mailTask.bodyText,
+    bodyHtml: batch.mailTask.bodyHtml,
     recipientCount: recipients.length,
   };
 }
 
-export async function sendBatch(batchId: string, gmailAccountId: string, user: User) {
+/**
+ * The rendered HTML part, byte-for-byte what the MIME text/html section will
+ * carry, with each cid: reference resolved from the stored inline image so a
+ * browser shows what a mail client shows. Served as its own document so the
+ * image bytes never bloat the preview JSON.
+ */
+export async function getBatchPreviewDocument(batchId: string, user: User) {
+  const batch = await getAccessibleBatch(batchId, user);
+  const images = await getPrisma().mailTaskImage.findMany({
+    where: { mailTaskId: batch.mailTask.id },
+    orderBy: { position: 'asc' },
+    select: { contentId: true, mimeType: true, dataBase64: true },
+  });
+  return renderPreviewDocument({
+    bodyHtml: batch.mailTask.bodyHtml,
+    subject: batch.mailTask.subject,
+    images,
+  });
+}
+
+export async function sendBatch(batchId: string, gmailAccountId: string, user: User, origin: string) {
   const prisma = getPrisma();
   const batch = await getAccessibleBatch(batchId, user);
   if (batch.status === 'SENT') return { batchId, status: 'SENT', alreadySent: true };
@@ -96,6 +119,7 @@ export async function sendBatch(batchId: string, gmailAccountId: string, user: U
         messageId: deterministicMessageId,
         batchId,
         images,
+        unsubscribeUrl: buildUnsubscribeUrl(origin, await createUnsubscribeToken(batch.mailTask.id)),
       });
       providerMessageId = (await sendRawGmailMessage({ accountId: gmail.id, userId: user.id, raw })).id;
     }

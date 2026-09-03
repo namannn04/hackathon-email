@@ -12,6 +12,7 @@ export async function POST(request: NextRequest) {
       readString(body.batchId, 'Set', 80),
       readString(body.gmailAccountId, 'Gmail account', 80),
       user,
+      process.env.SITE_ORIGIN ?? request.nextUrl.origin,
     ));
   } catch (error) {
     return jsonError(error);

@@ -150,14 +150,33 @@ export function RelayApp({ view, eventId, mailTaskId }: { view: AppView; eventId
       redirectToSignIn();
       throw new Error('Your session expired. Redirecting to sign in…');
     }
-    const data = await response.json() as { mailTaskId: string; batches: number; batchSizes: number[]; error?: { message?: string } };
+    const data = await response.json() as { mailTaskId: string; batches: number; batchSizes: number[]; htmlWarnings?: string[]; error?: { message?: string } };
     if (!response.ok) {
       const message = data.error?.message ?? 'The mail task could not be created.';
       setError(message);
       throw new Error(message);
     }
-    setNotice(`Mail task created with ${data.batches} sets (${data.batchSizes.join(', ')}).`);
+    const adjusted = data.htmlWarnings?.length
+      ? ` ${data.htmlWarnings.length} HTML adjustment${data.htmlWarnings.length === 1 ? '' : 's'} were applied for email compatibility.`
+      : '';
+    setNotice(`Mail task created with ${data.batches} sets (${data.batchSizes.join(', ')}).${adjusted}`);
     await load();
+    return data;
+  }
+
+  async function sendTestMail(form: FormData) {
+    // Multipart so any inline images ride along, exactly as the create call does.
+    setError(null);
+    const response = await fetch('/api/mail-tasks/test', { method: 'POST', body: form });
+    if (response.status === 401) {
+      redirectToSignIn();
+      throw new Error('Your session expired. Redirecting to sign in…');
+    }
+    const data = await response.json() as {
+      delivered: boolean; mockTransport: boolean; recipient: string; from: string;
+      error?: { message?: string };
+    };
+    if (!response.ok) throw new Error(data.error?.message ?? 'The test email could not be sent.');
     return data;
   }
 
@@ -212,7 +231,7 @@ export function RelayApp({ view, eventId, mailTaskId }: { view: AppView; eventId
       {error ? <Toast tone="error" message={error} onClose={() => setError(null)} /> : null}
       {view === 'campaign' ? <BatchPicker overview={overview} onPreview={previewBatch} onSend={sendBatch} onAddMockAccount={addMockAccount} /> : null}
       {view === 'batches' ? <MyBatchesPanel overview={overview} onAddMockAccount={addMockAccount} onDisconnectAccount={disconnectGmailAccount} /> : null}
-      {view === 'admin' ? <AdminPanel overview={overview} onCreateEvent={createEvent} onDeleteEvent={deleteEvent} onCreateMailTask={createMailTask} onAddSuppression={addSuppression} onRemoveSuppression={removeSuppression} onCreateInvite={createEventInvite} onRevokeInvite={revokeEventInvite} /> : null}
+      {view === 'admin' ? <AdminPanel overview={overview} onCreateEvent={createEvent} onDeleteEvent={deleteEvent} onCreateMailTask={createMailTask} onSendTestMail={sendTestMail} onAddSuppression={addSuppression} onRemoveSuppression={removeSuppression} onCreateInvite={createEventInvite} onRevokeInvite={revokeEventInvite} /> : null}
     </RelayShell>
   );
 }

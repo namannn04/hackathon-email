@@ -18,6 +18,9 @@ export const metadata: Metadata = {
   title: 'Relay — Hackathon outreach without the spreadsheet shuffle',
   description:
     'Create event mail tasks and let authorized volunteers send one Gmail message per BCC recipient set.',
+  // Declared so the browser uses the bundled SVG instead of probing for a
+  // /favicon.ico that this project does not ship.
+  icons: { icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }] },
   openGraph: {
     title: 'Relay',
     description: 'Hackathon outreach, without the spreadsheet shuffle.',
