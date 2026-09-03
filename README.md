@@ -53,6 +53,7 @@ Every message carries a `List-Unsubscribe` header and a visible unsubscribe link
 - `List-Unsubscribe-Post: One-Click` is deliberately **not** advertised: a one-click POST could not say which recipient to remove, so claiming support would be a promise the Bcc design cannot keep. A `mailto:` fallback is offered alongside the link.
 - The address must already be on that event's recipient list before anything is suppressed, so a link — which every recipient holds — cannot be used to block a stranger. A valid request always gives the same answer, so the page is not a membership oracle.
 - By default the footer is appended to the body. Put `{{unsubscribe_url}}` in an `href` to place the link inside your own design instead.
+- A test send carries the same footer and header, signed for an id no mail task will ever have. The page recognises it and says there is nothing to unsubscribe from, rather than claiming the link is broken.
 - The link is written into the body when the mail task is created, using an id chosen before the row is written. The stored body is therefore already final — nothing is substituted at send time, which is what keeps a stored body's preview byte-exact.
 
 **How this works with a CSV.** The spreadsheet is never edited. `Suppression.normalizedEmail` is unique and global, and both mail-task creation and every send filter recipients against it, so an unsubscribed address is skipped from then on — including after the same CSV is re-imported, and including addresses already queued in an unsent set.

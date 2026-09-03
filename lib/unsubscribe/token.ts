@@ -16,6 +16,21 @@ import { HttpError } from '@/lib/http';
 
 const VERSION = 'u1';
 const KEY_INFO = 'relay-unsubscribe-v1';
+const TEST_PREFIX = 'test-';
+
+/**
+ * A token for a test send. It signs an id no mail task will ever have, so the
+ * footer looks exactly like the real one while the page can recognise it and
+ * say there is nothing to unsubscribe from — rather than claiming the link is
+ * broken, which is what a plain unknown id would look like.
+ */
+export async function createTestUnsubscribeToken(): Promise<string> {
+  return createUnsubscribeToken(`${TEST_PREFIX}${crypto.randomUUID().replaceAll('-', '')}`);
+}
+
+export function isTestUnsubscribeId(mailTaskId: string): boolean {
+  return mailTaskId.startsWith(TEST_PREFIX);
+}
 
 export async function createUnsubscribeToken(mailTaskId: string): Promise<string> {
   const payload = toBase64Url(new TextEncoder().encode(mailTaskId));

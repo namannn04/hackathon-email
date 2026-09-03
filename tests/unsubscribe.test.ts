@@ -1,7 +1,13 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { compileEmailBody, UNSUBSCRIBE_PLACEHOLDER } from '@/lib/email-html/document';
 import { buildGmailMime } from '@/lib/sending/mime';
-import { buildUnsubscribeUrl, createUnsubscribeToken, readUnsubscribeToken } from '@/lib/unsubscribe/token';
+import {
+  buildUnsubscribeUrl,
+  createTestUnsubscribeToken,
+  createUnsubscribeToken,
+  isTestUnsubscribeId,
+  readUnsubscribeToken,
+} from '@/lib/unsubscribe/token';
 
 beforeAll(() => {
   // 32 bytes, base64url, as the app requires.
@@ -35,6 +41,22 @@ describe('unsubscribe token', () => {
     expect(await readUnsubscribeToken('not-a-token')).toBeNull();
     expect(await readUnsubscribeToken('')).toBeNull();
     expect(await readUnsubscribeToken(null)).toBeNull();
+  });
+
+  it('marks a test send so its link is not mistaken for a broken one', async () => {
+    const id = await readUnsubscribeToken(await createTestUnsubscribeToken());
+    expect(id).toBeTruthy();
+    expect(isTestUnsubscribeId(id!)).toBe(true);
+  });
+
+  it('does not mark a real mail task as a test', async () => {
+    const id = await readUnsubscribeToken(await createUnsubscribeToken('mt4310e1e2130c'));
+    expect(isTestUnsubscribeId(id!)).toBe(false);
+  });
+
+  it('gives every test link a different id', async () => {
+    const [a, b] = await Promise.all([createTestUnsubscribeToken(), createTestUnsubscribeToken()]);
+    expect(a).not.toBe(b);
   });
 
   it('builds the link against whichever origin is running', async () => {

@@ -1,7 +1,7 @@
 import { writeAudit } from '@/lib/audit';
 import { getPrisma } from '@/lib/db/prisma';
 import { isValidEmail, normalizeEmail } from '@/lib/imports/parser';
-import { readUnsubscribeToken } from './token';
+import { isTestUnsubscribeId, readUnsubscribeToken } from './token';
 
 export type UnsubscribeOutcome = {
   /** True once the request was well formed, whether or not the address was on a list. */
@@ -9,6 +9,12 @@ export type UnsubscribeOutcome = {
   /** Present only when the token itself is unusable. */
   error?: string;
 };
+
+/** What a link points at, so the page can speak to the right situation. */
+export type UnsubscribeTarget =
+  | { kind: 'task'; eventName: string }
+  | { kind: 'test' }
+  | { kind: 'unknown' };
 
 /**
  * Suppresses an address that asked to stop receiving mail.
@@ -31,6 +37,9 @@ export async function unsubscribeByToken(token: string | null, emailValue: strin
   const mailTaskId = await readUnsubscribeToken(token);
   if (!mailTaskId) {
     return { accepted: false, error: 'This unsubscribe link is not valid. Reply to the email instead and we will remove you.' };
+  }
+  if (isTestUnsubscribeId(mailTaskId)) {
+    return { accepted: false, error: 'That was a test message, so there is no mailing list behind it.' };
   }
   if (!isValidEmail(emailValue)) {
     return { accepted: false, error: 'Enter a valid email address.' };
@@ -86,13 +95,14 @@ export async function unsubscribeByToken(token: string | null, emailValue: strin
   return { accepted: true };
 }
 
-/** The event name a link belongs to, for the unsubscribe page's own copy. */
-export async function describeUnsubscribeToken(token: string | null): Promise<{ eventName: string } | null> {
+/** What the link points at, so the page shows the right screen. */
+export async function describeUnsubscribeToken(token: string | null): Promise<UnsubscribeTarget> {
   const mailTaskId = await readUnsubscribeToken(token);
-  if (!mailTaskId) return null;
+  if (!mailTaskId) return { kind: 'unknown' };
+  if (isTestUnsubscribeId(mailTaskId)) return { kind: 'test' };
   const task = await getPrisma().mailTask.findUnique({
     where: { id: mailTaskId },
     select: { event: { select: { name: true } } },
   });
-  return task ? { eventName: task.event.name } : null;
+  return task ? { kind: 'task', eventName: task.event.name } : { kind: 'unknown' };
 }

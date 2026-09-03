@@ -7,7 +7,7 @@ import { gmailAccountHealth } from '@/lib/gmail/scopes';
 import { usesMockTransport } from '@/lib/gmail/transport';
 import { HttpError } from '@/lib/http';
 import { buildGmailMime } from '@/lib/sending/mime';
-import { buildUnsubscribeUrl, createUnsubscribeToken } from '@/lib/unsubscribe/token';
+import { buildUnsubscribeUrl, createTestUnsubscribeToken } from '@/lib/unsubscribe/token';
 import type { ComposedImage } from './form';
 
 /**
@@ -41,10 +41,10 @@ export async function sendTestEmail(input: {
   }
 
   const images = (input.images ?? []).map((image, index) => ({ ...image, contentId: `image${index + 1}` }));
-  // A token for a task that does not exist: the footer and header look exactly
-  // as they will, and the page tells a curious clicker the link is not valid.
+  // The footer and header look exactly as they will on a real send; the
+  // unsubscribe page recognises a test link and says so instead of erroring.
   const testId = crypto.randomUUID();
-  const unsubscribeUrl = buildUnsubscribeUrl(input.origin, await createUnsubscribeToken(`test-${testId.replaceAll('-', '')}`));
+  const unsubscribeUrl = buildUnsubscribeUrl(input.origin, await createTestUnsubscribeToken());
   const body = compileEmailBody({
     bodyHtml: input.bodyHtml,
     bodyText: input.bodyText,
